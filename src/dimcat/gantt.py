@@ -290,10 +290,10 @@ def write_gantt_charts(args):
         recursive=args.nonrecursive,
         logger_cfg=dict(level=args.level),
     )
-    p.parse_mscx()
+    p.parse_scores()
     gantt_path = resolve_dir(args.out)
-    ats = p.get_lists(expanded=True)
-    N = len(ats)
+    expanded_dfs = p.get_facets("expanded", flat=True, concatenate=False)
+    N = len(expanded_dfs)
     if N == 0:
         p.logger.info(
             "None of the scores contains DCML harmony labels, no gantt charts created."
@@ -301,15 +301,9 @@ def write_gantt_charts(args):
         return
     else:
         p.logger.info(f"{N} files contain DCML labels.")
-    for (
-        key,
-        i,
-        _,
-    ), at in (
-        ats.items()
-    ):  # at stands for annotation table, i.e. DataFrame of expanded labels
-        fname = p.fnames[key][i]
-        score_obj = p._parsed_mscx[(key, i)]
+    for (corpus, fname), dfs in expanded_dfs.items():
+        file, expanded = dfs[0]
+        score_obj = p[corpus][fname].score()
         metadata = score_obj.mscx.metadata
         logger = score_obj.mscx.logger
         try:
@@ -318,11 +312,11 @@ def write_gantt_charts(args):
             logger.warning("Global key is missing in the metadata.")
             globalkey = "?"
         logger.debug(f"Creating Gantt data for {fname}...")
-        data = make_gantt_data(at, logger=logger)
+        data = make_gantt_data(expanded, logger=logger)
         if len(data) == 0:
             logger.debug(f"Could not create Gantt data for {fname}...")
             continue
-        phrases = get_phraseends(at)
+        phrases = get_phraseends(expanded)
         data.sort_values(args.yaxis, ascending=False, inplace=True)
         logger.debug(f"Making and storing Gantt chart for {fname}...")
         fig = create_modulation_plan(
