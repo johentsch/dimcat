@@ -13,7 +13,7 @@ class Pipeline(PipelineStep):
     another Pipeline.
     """
 
-    def __init__(self, pipeline_steps: List[PipelineStep]):
+    def __init__(self, pipeline_steps: List[PipelineStep], **kwargs):
         """
         Create a new Pipeline for performing an iterative computation on some Data.
 
@@ -22,6 +22,7 @@ class Pipeline(PipelineStep):
         pipeline_steps : List[PipelineStep]
             A List of the computations to perform iteratively on the input Data.
         """
+        super().__init__(**kwargs)
         self.pipeline_steps = pipeline_steps
 
     def process_data(self, data: Data) -> Data:

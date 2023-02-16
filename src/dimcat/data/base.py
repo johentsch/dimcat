@@ -1,4 +1,6 @@
 """Class hierarchy for data types."""
+from __future__ import annotations
+
 import copy
 import logging
 from functools import lru_cache
@@ -40,6 +42,7 @@ class Dataset(Data):
         kwargs
             All keyword arguments are passed to load().
         """
+        super().__init__(data=data, **kwargs)
         self._data = None
         """Protected attribute for storing and internally accessing the loaded data."""
 
@@ -98,7 +101,7 @@ class Dataset(Data):
         # vvv all other fields are deepcopied vvv
         if isinstance(data_object, SlicedData) and not isinstance(self, SlicedData):
             self.indices = sorted(set(ID[:2] for ID in data_object.indices))
-        elif self.__class__.__name__ == "Dataset":
+        elif self.name == "Dataset":
             self.indices = []
             self.reset_indices()
         else:
@@ -106,7 +109,7 @@ class Dataset(Data):
         self.index_levels = copy.deepcopy(data_object.index_levels)
         self.pipeline_steps = list(data_object.pipeline_steps)
         self.group2pandas = data_object.group2pandas
-        if self.__class__.__name__ == "Dataset":
+        if self.name == "Dataset":
             return
         processed_types = typestrings2types(PROCESSED_DATA_FIELDS.keys())
         typestring2dtype = dict(zip(PROCESSED_DATA_FIELDS.keys(), processed_types))
@@ -280,7 +283,7 @@ class Dataset(Data):
         if slicer is not None:
             self.index_levels["slicer"] = [slicer]
 
-    def load(self, directory: Optional[Union[str, List[str]]]):
+    def load(self, directory: Optional[Union[str, List[str]]], **kwargs):
         """
         Load and parse all of the desired raw data and metadata.
 

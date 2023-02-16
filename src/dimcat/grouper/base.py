@@ -21,8 +21,9 @@ class Grouper(PipelineStep, ABC):
     ``{(*old_groups, new_group) -> [(id)]}``.
     """
 
-    def __init__(self, sort=True):
+    def __init__(self, sort=True, **kwargs):
         """Groups indices together that belong to the same corpus."""
+        super().__init__(**kwargs)
         self.sort = sort
         self.level_names = {}
         """Define {"grouper": "index_level_name"} so that the DataFrame index level distinguishing
@@ -77,7 +78,7 @@ class Grouper(PipelineStep, ABC):
 class CorpusGrouper(Grouper):
     """Groups indices that belong to the same corpus."""
 
-    def __init__(self, sort=True):
+    def __init__(self, sort=True, **kwargs):
         """Groups indices together that belong to the same corpus."""
         self.sort = sort
         self.level_names = dict(grouper="corpus")
@@ -89,7 +90,7 @@ class CorpusGrouper(Grouper):
 class PieceGrouper(Grouper):
     """Groups indices that belong to the same piece."""
 
-    def __init__(self, sort=True):
+    def __init__(self, sort=True, **kwargs):
         """Groups indices together that belong to the same corpus."""
         self.sort = sort
         self.level_names = dict(grouper="fname")
@@ -104,7 +105,7 @@ class PieceGrouper(Grouper):
 class YearGrouper(Grouper):
     """Groups indices based on the composition years indicated in the metadata."""
 
-    def __init__(self, sort=True):
+    def __init__(self, sort=True, **kwargs):
         """Groups indices together based on the composition year indicated in the metadata."""
         self.sort = sort
         self.level_names = dict(grouper="year")
@@ -129,7 +130,7 @@ class ModeGrouper(Grouper):
     """Groups indices based on the mode of a given segment. Requires previous application of
     LocalKeySlicer."""
 
-    def __init__(self, sort=True):
+    def __init__(self, sort=True, **kwargs):
         """Groups indices together that belong to the same corpus."""
         self.sort = sort
         self.level_names = dict(grouper="localkey_is_minor")

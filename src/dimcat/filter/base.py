@@ -9,7 +9,8 @@ class Filter(PipelineStep, ABC):
     A Filter will process a Data object by removing indices from its list of indices.
     """
 
-    def __init__(self, keep_empty_groups=False):
+    def __init__(self, keep_empty_groups=False, **kwargs):
+        super().__init__(**kwargs)
         self.keep_empty_groups = keep_empty_groups
 
     @abstractmethod

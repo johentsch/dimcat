@@ -228,11 +228,11 @@ class TypedSequence(Sequence[T_co]):
         return super().__new__(cls)
 
     @overload
-    def __init__(self, values: Sequence[T_co], converter: Literal[None]):
+    def __init__(self, values: Sequence[T_co], converter: Literal[None], **kwargs):
         ...
 
     @overload
-    def __init__(self, values: Sequence[C], converter: Callable[[C], T_co]):
+    def __init__(self, values: Sequence[C], converter: Callable[[C], T_co], **kwargs):
         ...
 
     def __init__(
@@ -448,8 +448,8 @@ class Ngrams(TypedSequence[Tuple[T_co, ...]]):
     a transition matrix.
     """
 
-    def __init__(self, values: Sequence[Sequence[T_co]], converter=to_tuple):
-        super().__init__(values, converter)
+    def __init__(self, values: Sequence[Sequence[T_co]], converter=to_tuple, **kwargs):
+        super().__init__(values, converter, **kwargs)
 
     def get_transition_matrix(
         self,
@@ -514,5 +514,7 @@ class Bigrams(Ngrams[Tuple[T_co, T_co]]):
 
 
 class PieceIndex(TypedSequence[PieceID], register_for=[PieceID]):
-    def __init__(self, values: Sequence[Tuple[str, str]], converter=PieceID._make):
-        super().__init__(values, converter)
+    def __init__(
+        self, values: Sequence[Tuple[str, str]], converter=PieceID._make, **kwargs
+    ):
+        super().__init__(values=values, converter=converter, **kwargs)

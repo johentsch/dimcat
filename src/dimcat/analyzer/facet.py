@@ -15,9 +15,9 @@ class FacetAnalyzer(Analyzer):
     def aggregate(result_a: pd.Series, result_b: pd.Series) -> pd.Series:
         return result_a.add(result_b, fill_value=0.0)
 
-    def __init__(self):
+    def __init__(self, **kwargs):
         """Adds the field :attr:`required_facets`"""
-        super().__init__()
+        super().__init__(**kwargs)
         self.required_facets = []
 
     def data_iterator(self, data: AnalyzedData) -> Iterator[Tuple[ID, pd.DataFrame]]:
@@ -27,26 +27,26 @@ class FacetAnalyzer(Analyzer):
 class NotesAnalyzer(FacetAnalyzer):
     result_type = "NotesResult"
 
-    def __init__(self):
+    def __init__(self, **kwargs):
         """Analyzers that work on notes tables."""
-        super().__init__()
+        super().__init__(**kwargs)
         self.required_facets = ["notes"]
 
 
 class ChordSymbolAnalyzer(FacetAnalyzer):
     result_type = "ChordSymbolResult"
 
-    def __init__(self):
+    def __init__(self, **kwargs):
         """Analyzers that work on expanded annotation tables."""
-        super().__init__()
+        super().__init__(**kwargs)
         self.required_facets = ["expanded"]
 
 
 class TPCrange(NotesAnalyzer):
     """Computes the range from the minimum to the maximum Tonal Pitch Class (TPC)."""
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.level_names["processed"] = "tpc_range"
         self.group2pandas = "group_of_values2series"
 
@@ -87,6 +87,7 @@ class PitchClassVectors(NotesAnalyzer):
         normalize=False,
         ensure_pitch_classes=None,
         include_empty=False,
+        **kwargs,
     ):
         """Analyzer that groups notes by their pitch class and aggregates their durations.
 
@@ -113,7 +114,7 @@ class PitchClassVectors(NotesAnalyzer):
             therefore not appear in the concatenated results. Set to True if you want to include
             them as empty rows in a post processing step.
         """
-        super().__init__()
+        super().__init__(**kwargs)
         self.config = dict(
             pitch_class_format=pitch_class_format,
             weight_grace_durations=float(weight_grace_durations),
@@ -222,13 +223,13 @@ class ChordSymbolUnigrams(ChordSymbolAnalyzer):
     frequency.
     """
 
-    def __init__(self):
+    def __init__(self, **kwargs):
         """Analyzer that returns the counts of chord symbols for each group, ordered by descending
         frequency.
 
 
         """
-        super().__init__()
+        super().__init__(**kwargs)
         self.level_names["processed"] = "chord"
         self.group2pandas = "group_of_series2series"
 
@@ -255,7 +256,7 @@ class ChordSymbolBigrams(ChordSymbolAnalyzer):
 
     assert_steps = ["LocalKeySlicer"]
 
-    def __init__(self, dropna=True):
+    def __init__(self, dropna=True, **kwargs):
         """Analyzer that returns the bigram counts for all valid chord transitions within a group,
             ordered by descending frequency.
 
@@ -266,7 +267,7 @@ class ChordSymbolBigrams(ChordSymbolAnalyzer):
             from a missing value's preceding to its subsequent value. Pass False to include
             bigrams from and to NaN values.
         """
-        super().__init__()
+        super().__init__(**kwargs)
         self.level_names["processed"] = ["from", "to"]
         self.group2pandas = "group_of_series2series"
         self.config["dropna"] = dropna

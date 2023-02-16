@@ -40,13 +40,14 @@ class FacetSlicer(Slicer):
     note lists or annotations.
     """
 
-    def __init__(self, facet, slice_name, **config):
+    def __init__(self, facet, slice_name, **kwargs):
+        super().__init__(**kwargs)
         self.required_facets = [facet]
         self.level_names = dict(
             indices=slice_name,  # index level name for the slice intervals
             slicer=slice_name + "d",
         )  # file name component for the filename_factory
-        self.config = dict(config)
+        self.config = dict(kwargs)
         """Define {"indices": "slice_level_name"} to give the third index column that contains
         the slices' intervals a meaningful name. Define {"slicer": "slicer_name"} for the
         creation of meaningful file names.
@@ -113,7 +114,6 @@ class LazyFacetSlicer(FacetSlicer):
         # where keys are the new indices. Each piece's (corpus, fname) index tuple will be
         # multiplied according to the number of slices and the new index tuples will be
         # differentiated by the slices' intervals: (corpus, fname, interval)
-        slicer_name = self.__class__.__name__
         slice_indices: Dict[PieceID, List[SliceID]] = {}
         slice_infos: Dict[PieceID, pd.DataFrame] = {}
         """For each slice, the relevant info about it, e.g. for later grouping"""
@@ -134,7 +134,7 @@ class LazyFacetSlicer(FacetSlicer):
         }
         if sum(n_slices_per_id.values()) == 0:
             raise RuntimeError(
-                f"{slicer_name} did not yield any slices. Probably the data is missing a feature "
+                f"{self.name} did not yield any slices. Probably the data is missing a feature "
                 f"(such as particular annotations) that is required for slicing."
             )
         no_slice_ids = [ID for ID, n_slices in n_slices_per_id.items() if n_slices == 0]
@@ -180,7 +180,6 @@ class OnePassFacetSlicer(FacetSlicer):
         # where keys are the new indices. Each piece's (corpus, fname) index tuple will be
         # multiplied according to the number of slices and the new index tuples will be
         # differentiated by the slices' intervals: (corpus, fname, interval)
-        slicer_name = self.__class__.__name__
         slice_indices: Dict[PieceID, List[SliceID]] = {}
         slice_infos: Dict[PieceID, pd.DataFrame] = {}
         """For each slice, the relevant info about it, e.g. for later grouping"""
@@ -203,13 +202,13 @@ class OnePassFacetSlicer(FacetSlicer):
         }
         if sum(n_slices_per_id.values()) == 0:
             raise RuntimeError(
-                f"{slicer_name} did not yield any slices. Probably the data is missing a feature "
+                f"{self.name} did not yield any slices. Probably the data is missing a feature "
                 f"(such as particular annotations) that is required for slicing."
             )
         no_slice_ids = [ID for ID, n_slices in n_slices_per_id.items() if n_slices == 0]
         if len(no_slice_ids) > 0:
             logger.warning(
-                f"{slicer_name} did not yield any slices for the following IDs "
+                f"{self.name} did not yield any slices for the following IDs "
                 f"(annotations missing?):\n{no_slice_ids}"
             )
         result.track_pipeline(self, **self.level_names)
@@ -222,7 +221,7 @@ class OnePassFacetSlicer(FacetSlicer):
 class NoteSlicer(OnePassFacetSlicer):
     """Slices note tables based on a regular interval size or on every onset."""
 
-    def __init__(self, quarters_per_slice=None):
+    def __init__(self, quarters_per_slice=None, **kwargs):
         """Slices note tables based on a regular interval size or on every onset.
 
         Parameters
@@ -238,7 +237,7 @@ class NoteSlicer(OnePassFacetSlicer):
             name = f"{round(float(quarters_per_slice), 1)}q_slice"
         if quarters_per_slice is not None:
             quarters_per_slice = float(quarters_per_slice)
-        super().__init__("notes", name, quarters_per_slice=quarters_per_slice)
+        super().__init__("notes", name, quarters_per_slice=quarters_per_slice, **kwargs)
 
     def check(self, facet_df):
         if len(facet_df.index) == 0:
@@ -263,7 +262,7 @@ class NoteSlicer(OnePassFacetSlicer):
 class MeasureSlicer(OnePassFacetSlicer):
     """Slices note tables based on a regular interval size or on every onset."""
 
-    def __init__(self, use_measure_numbers=True):
+    def __init__(self, use_measure_numbers=True, **kwargs):
         """Slices note tables based on a regular interval size or on every onset.
 
         Parameters
@@ -274,7 +273,10 @@ class MeasureSlicer(OnePassFacetSlicer):
             split measures, etc.
         """
         super().__init__(
-            "measures", "measure_slice", use_measure_numbers=use_measure_numbers
+            "measures",
+            "measure_slice",
+            use_measure_numbers=use_measure_numbers,
+            **kwargs,
         )
 
     def check(self, facet_df):
@@ -303,7 +305,7 @@ class MeasureSlicer(OnePassFacetSlicer):
 class ChordFeatureSlicer(OnePassFacetSlicer):
     """Create slices based on a particular feature by grouping adjacent identical values."""
 
-    def __init__(self, feature="chord", na_values="ffill"):
+    def __init__(self, feature="chord", na_values="ffill", **kwargs):
         """Create slices based on a particular feature.
 
         Parameters
@@ -320,7 +322,9 @@ class ChordFeatureSlicer(OnePassFacetSlicer):
             | Any other value works like 'group', with the difference that the NA groups will be named with this value.
         """
         name = f"{feature}_slice"
-        super().__init__("expanded", name, feature=feature, na_values=na_values)
+        super().__init__(
+            "expanded", name, feature=feature, na_values=na_values, **kwargs
+        )
 
     def check(self, facet_df):
         if len(facet_df) == 0:
@@ -348,9 +352,9 @@ class ChordFeatureSlicer(OnePassFacetSlicer):
 class LocalKeySlicer(ChordFeatureSlicer):
     """Slices annotation tables based on adjacency groups of the 'localkey' column."""
 
-    def __init__(self):
+    def __init__(self, **kwargs):
         """Slices annotation tables based on adjacency groups of the 'localkey' column."""
-        super().__init__(feature="localkey", na_values="group")
+        super().__init__(feature="localkey", na_values="group", **kwargs)
 
     def iter_slices(self, index, facet_df, feature="localkey", na_values="group"):
         name = "_".join(index)
@@ -384,7 +388,7 @@ class ChordCriterionSlicer(OnePassFacetSlicer):
     occur without a new harmony and need slice the table, use PhraseSlicer.
     """
 
-    def __init__(self, column="chord", contains_str=None, warn_na=False):
+    def __init__(self, column="chord", contains_str=None, warn_na=False, **kwargs):
         """Defines the criteria for starting slices.
 
         Parameters
@@ -403,7 +407,12 @@ class ChordCriterionSlicer(OnePassFacetSlicer):
             )
         name = f"{column}_criterion_slice"
         super().__init__(
-            "expanded", name, column=column, contains_str=contains_str, warn_na=warn_na
+            "expanded",
+            name,
+            column=column,
+            contains_str=contains_str,
+            warn_na=warn_na,
+            **kwargs,
         )
 
     def check(self, facet_df):
@@ -490,7 +499,7 @@ class PhraseSlicer(SpecialFacetSlicer):
         "bass_note",
     ]
 
-    def __init__(self, warn_na=False):
+    def __init__(self, warn_na=False, **kwargs):
         """Defines the criteria for starting slices.
 
         Parameters
@@ -500,7 +509,7 @@ class PhraseSlicer(SpecialFacetSlicer):
             Set warn_na to True if you want the logger to throw a warning in this case.
         """
         name = "phrase_slice"
-        super().__init__("expanded", name, warn_na=warn_na)
+        super().__init__("expanded", name, warn_na=warn_na, **kwargs)
 
     def check(self, facet_df):
         if len(facet_df) == 0:

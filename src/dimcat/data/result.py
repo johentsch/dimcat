@@ -17,7 +17,9 @@ class Result(Data):
         analyzer: "Analyzer",  # noqa: F821
         dataset_before: Dataset,
         dataset_after: AnalyzedData,
+        **kwargs,
     ):
+        super().__init__(**kwargs)
         self.analyzer = analyzer
         self.dataset_before = dataset_before
         self.dataset_after = dataset_after
@@ -79,13 +81,13 @@ class Result(Data):
                 aggregated = self._aggregate_results_by_ids(indices)
                 if aggregated is None:
                     logger.warning(
-                        f"{self.analyzer.__class__.__name__} yielded no result for group {group}"
+                        f"{self.analyzer.name} yielded no result for group {group}"
                     )
                     continue
                 yield group, aggregated
         else:
             aggregated = self._aggregate_results_by_ids(self.iter_results())
-            yield self.dataset_before.__class__.__name__, aggregated
+            yield self.dataset_before.name, aggregated
 
     def __copy__(self):
         new_obj = self.__class__(
@@ -121,7 +123,7 @@ class Result(Data):
         return len(self.result_dict)
 
     def __repr__(self):
-        name = f"{self.analyzer.__class__.__name__} of {self.dataset_before.__class__.__name__}"
+        name = f"{self.analyzer.name} of {self.dataset_before.name}"
         name += "\n" + "-" * len(name)
         n_results = f"{len(self)} results"
         if len(self.config) > 0:

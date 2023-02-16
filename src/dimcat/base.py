@@ -14,6 +14,13 @@ class Data(ABC):
     _registry: Dict[str, Type] = {}
     """Register of all subclasses."""
 
+    def __init__(self, **kwargs):
+        pass
+
+    @property
+    def name(self) -> str:
+        return self.__class__.__name__
+
     def __init_subclass__(cls, **kwargs):
         """Registers every subclass under the class variable :attr:`_registry`"""
         super().__init_subclass__(**kwargs)
@@ -31,7 +38,7 @@ class PipelineStep(ABC):
     _registry: Dict[str, Type] = {}
     """Register of all subclasses."""
 
-    def __init__(self):
+    def __init__(self, **kwargs):
         self.required_facets = []
         """Specifies a list of facets (such as 'notes' or 'labels') that the passed Data object
         needs to provide."""
@@ -40,6 +47,10 @@ class PipelineStep(ABC):
         """Registers every subclass under the class variable :attr:`_registry`"""
         super().__init_subclass__(**kwargs)
         cls._registry[cls.__name__] = cls
+
+    @property
+    def name(self) -> str:
+        return self.__class__.__name__
 
     def check(self, _) -> Tuple[bool, str]:
         """Test piece of data for certain properties before computing analysis.
@@ -54,7 +65,7 @@ class PipelineStep(ABC):
         return True, ""
 
     def filename_factory(self):
-        return self.__class__.__name__
+        return self.name
 
     @abstractmethod
     def process_data(self, data: Data) -> Data:

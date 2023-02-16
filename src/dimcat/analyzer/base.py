@@ -36,8 +36,9 @@ class Analyzer(PipelineStep, ABC):
     """Analyzer.process_data() raises ValueError if any of the previous :obj:`PipelineStep` applied to the
     :obj:`_Dataset` matches one of these types."""
 
-    def __init__(self):
+    def __init__(self, **kwargs):
         """Creates essential fields."""
+        super().__init__(**kwargs)
         self.config = {}
         """:obj:`dict`
         This dictionary stores the parameters to be passed to the compute() method."""
@@ -73,7 +74,7 @@ class Analyzer(PipelineStep, ABC):
 
     def process_data(self, dataset: Dataset) -> AnalyzedData:
         """Returns an :obj:`AnalyzedData` copy of the Dataset with the added analysis result."""
-        analyzer_name = self.__class__.__name__
+        analyzer_name = self.name
         if len(self.assert_steps) > 0:
             assert_steps = typestrings2types(self.assert_steps)
             for step in assert_steps:

@@ -38,11 +38,9 @@ class LocalKeySequence(GroupedSliceInfoAnalyzer):
 
     assert_steps = ["LocalKeySlicer", "PieceGrouper"]
 
-    def __init__(
-        self,
-    ):
+    def __init__(self, **kwargs):
         """"""
-        super().__init__()
+        super().__init__(**kwargs)
         self.level_names["processed"] = ["localkeys"]
         self.group2pandas = None
 
@@ -60,11 +58,9 @@ class LocalKeyUnique(SliceInfoAnalyzer):
 
     assert_steps = ["LocalKeySlicer"]
 
-    def __init__(
-        self,
-    ):
+    def __init__(self, **kwargs):
         """"""
-        super().__init__()
+        super().__init__(**kwargs)
         self.level_names["processed"] = ["localkeys"]
         self.group2pandas = None
 
