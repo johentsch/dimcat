@@ -390,7 +390,7 @@ class Dataset(Data):
         self.set_indices(list(self.pieces.keys()))
 
 
-class _ProcessedData(Dataset):
+class _ProcessedDataMixin(Data):
     """Base class for types of processed :obj:`_Dataset` objects.
     Processed datatypes are created by passing a _Dataset object. The new object will be a copy of the Data with the
     :attr:`prefix` prepended. Subclasses should have an __init__() method that calls super().__init__() and then
@@ -451,7 +451,7 @@ class _ProcessedData(Dataset):
         super().__init__(data=data, **kwargs)
 
 
-class SlicedData(_ProcessedData):
+class SlicedData(_ProcessedDataMixin):
     """A type of Data object that contains the slicing information created by a Slicer. It slices all requested
     facets based on that information.
     """
@@ -498,7 +498,7 @@ class SlicedData(_ProcessedData):
         yield from self.slice_info.items()
 
 
-class GroupedData(_ProcessedData):
+class GroupedData(_ProcessedDataMixin):
     """A type of Data object that behaves like its predecessor but returns and iterates through groups."""
 
     type_mapping = {
@@ -564,7 +564,7 @@ class GroupedData(_ProcessedData):
             yield group, group_df
 
 
-class AnalyzedData(_ProcessedData):
+class AnalyzedData(_ProcessedDataMixin):
     """A type of Data object that contains the results of an Analyzer and knows how to plot it."""
 
     type_mapping = {
