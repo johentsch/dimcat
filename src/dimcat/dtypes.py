@@ -577,6 +577,11 @@ class PPiece(Protocol):
         ...
 
 
+@runtime_checkable
+class PNotesTable(Protocol):
+    tpc: pd.Series
+
+
 @dataclass(frozen=True)
 class TabularData(ABC):
     """Wrapper around a :obj:`pandas.DataFrame`."""
