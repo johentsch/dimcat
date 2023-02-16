@@ -4,17 +4,24 @@ from __future__ import annotations
 import copy
 import logging
 from functools import lru_cache
-from typing import Collection, Dict, Iterator, List, Optional, Tuple, Union
+from typing import (
+    Collection,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+)
 
 import ms3
 import pandas as pd
 from dimcat.base import Data
-from dimcat.dtypes import ID, GroupID, PieceID, SliceID
-from dimcat.utils.functions import (
-    clean_index_levels,
-    infer_dataset_type,
-    typestrings2types,
-)
+from dimcat.data.loader import infer_data_loader
+from dimcat.dtypes import ID, GroupID, PieceID, PieceIndex, PLoader, PPiece, SliceID
+from dimcat.utils.functions import clean_index_levels, typestrings2types
 from ms3._typing import ScoreFacet
 
 logger = logging.getLogger(__name__)
@@ -46,7 +53,9 @@ class Dataset(Data):
         self._data = None
         """Protected attribute for storing and internally accessing the loaded data."""
 
-        self.pieces: Dict[ID, ms3.Piece] = {}
+        self.loaders: List[PLoader] = []
+
+        self.pieces: Dict[PieceID, PPiece] = {}
         """{(corpus, fname) -> Any}
         References to the individual pieces contained in the data. The exact type depends on the type of data.
         """
@@ -111,8 +120,12 @@ class Dataset(Data):
         self.group2pandas = data_object.group2pandas
         if self.name == "Dataset":
             return
-        processed_types = typestrings2types(PROCESSED_DATA_FIELDS.keys())
-        typestring2dtype = dict(zip(PROCESSED_DATA_FIELDS.keys(), processed_types))
+        typestring2dtype: Dict[str, type] = dict(
+            zip(
+                PROCESSED_DATA_FIELDS.keys(),
+                typestrings2types(PROCESSED_DATA_FIELDS.keys()),
+            )
+        )
         for typestring, optional_fields in PROCESSED_DATA_FIELDS.items():
             dtype = typestring2dtype[typestring]
             if not (isinstance(data_object, dtype) and isinstance(self, dtype)):
@@ -148,8 +161,13 @@ class Dataset(Data):
         )
         return clean_index_levels(concatenated_groups)
 
-    def get_indices(self) -> List[PieceID]:
-        return list(self.indices)
+    def get_indices(self) -> List[PieceIndex]:
+        """Get all available Index objects (currently only PieceIndex)."""
+        return [self.get_piece_index()]
+
+    def get_piece_index(self) -> PieceIndex:
+        """Get the currently selected PieceIDs as PieceIndex."""
+        return PieceIndex(self.indices)
 
     @lru_cache()
     def get_item(self, ID: PieceID, what: ScoreFacet) -> Optional[pd.DataFrame]:
@@ -283,7 +301,34 @@ class Dataset(Data):
         if slicer is not None:
             self.index_levels["slicer"] = [slicer]
 
-    def load(self, directory: Optional[Union[str, List[str]]], **kwargs):
+    def attach_loader(self, loader: PLoader):
+        self.loaders.append(loader)
+        self._retrieve_pieces_from_loader(loader)
+
+    def _add_ids(self, ids: Union[PieceID, Iterable[PieceID]]):
+        """Adds new IDs to :attr:`indices`."""
+        if isinstance(ids, PieceID):
+            ids = [ids]
+        for PID in ids:
+            if PID in self.pieces:
+                self.indices.append(PID)
+            else:
+                logger.warning(f"{PID} does not point to an existing Piece.")
+                continue
+
+    def _retrieve_pieces_from_loader(self, loader: PLoader):
+        new_ids = []
+        for PID, piece in loader.iter_pieces():
+            new_ids.append(PID)
+            self.pieces[PID] = piece
+        self._add_ids(new_ids)
+
+    def load(
+        self,
+        directory: Optional[Union[str, List[str]]],
+        loader: Optional[Type[PLoader]] = None,
+        **kwargs,
+    ):
         """
         Load and parse all of the desired raw data and metadata.
 
@@ -291,25 +336,16 @@ class Dataset(Data):
         ----------
         directory : str
             The path(s) to all the data to load.
+        loader:
         """
         if isinstance(directory, str):
             directory = [directory]
+        _loader = loader
         for d in directory:
-            dataset_type = infer_dataset_type(d)
-            if dataset_type == "dcml":
-                self.load_dcml(d)
-
-    def load_dcml(self, directory: Optional[Union[str, List[str]]], **kwargs):
-        ms3_parse = ms3.Parse()
-        if isinstance(directory, str):
-            directory = [directory]
-        for d in directory:
-            ms3_parse.add_dir(directory=d, **kwargs)
-        for corpus_name, ms3_corpus in ms3_parse.iter_corpora():
-            for fname, piece in ms3_corpus.iter_pieces():
-                ID = PieceID(corpus_name, fname)
-                self.pieces[ID] = piece
-                self.indices.append(ID)
+            if loader is None:
+                _loader = infer_data_loader(d)
+            loader_object = _loader(directory=d, **kwargs)
+            self.attach_loader(loader_object)
 
     def group_of_values2series(self, group_dict) -> pd.Series:
         """Converts an {ID -> processing_result} dict into a Series."""
@@ -387,7 +423,15 @@ class Dataset(Data):
 
     def reset_indices(self):
         """"""
-        self.set_indices(list(self.pieces.keys()))
+        self.indices = []
+        for loader in self.loaders:
+            self._retrieve_pieces_from_loader(loader)
+
+    def __str__(self):
+        return str(self.get_piece_index())
+
+    def __repr__(self):
+        return str(self.get_piece_index())
 
 
 class _ProcessedDataMixin(Data):

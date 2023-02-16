@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import logging
+from abc import ABC
+from dataclasses import dataclass
+from enum import Enum
+from functools import cached_property
+from pathlib import Path
 from typing import (
     Any,
     Callable,
+    Collection,
     Dict,
     Hashable,
     Iterable,
@@ -12,6 +18,7 @@ from typing import (
     Literal,
     NamedTuple,
     Optional,
+    Protocol,
     Sequence,
     Tuple,
     Type,
@@ -21,8 +28,10 @@ from typing import (
     _GenericAlias,
     get_args,
     overload,
+    runtime_checkable,
 )
 
+import ms3
 import numpy as np
 import pandas as pd
 from dimcat.utils import grams, transition_matrix
@@ -76,7 +85,7 @@ class TypedSequence(Sequence[T_co]):
     This is useful for downcasting to a subclass that has the fitting converter pre-defined.
     For example, ``PieceIndex`` is defined as
 
-        >>> class PieceIndex(TypedSequence[PieceID], register_for=[PieceID]):
+        class PieceIndex(TypedSequence[PieceID], register_for=[PieceID]):
 
     where ``register_for=List[Type]`` makes sure any TypedSequence instantiated
     **without a custom converter** and with a first element of type ``Type`` will be
@@ -123,12 +132,23 @@ class TypedSequence(Sequence[T_co]):
     ) -> Iterator[T_co]:
         yield from (x for x in self.values if condition(x))
 
+    @overload
+    def get_n_grams(self, n: Literal[2]) -> Bigrams[T_co]:
+        ...
+
+    @overload
     def get_n_grams(self, n: int) -> Ngrams[T_co]:
+        ...
+
+    def get_n_grams(self, n: int) -> Union[Ngrams[T_co], Bigrams[T_co]]:
         """
         Returns n-gram tuples of the sequence, i.e. all N-(n-1) possible direct successions of n elements.
         """
         n_grams = grams(self.values, n=n)
-        return Ngrams(values=n_grams)
+        if n == 2:
+            return Bigrams(values=n_grams)
+        else:
+            return Ngrams(values=n_grams)
 
     def get_transition_matrix(
         self,
@@ -468,12 +488,6 @@ class Ngrams(TypedSequence[Tuple[T_co, ...]]):
         is followed by any of the n-grams' last elements.
 
         Args:
-            list_of_sequences:
-                List of elements or nested list of elements between which the transitions are calculated. If the list
-                is nested, bigrams are calculated recursively to exclude transitions between the lists. If you want
-                to create the transition matrix from a list of n-grams directly, pass it as ``list_of_grams`` instead.
-            list_of_grams: List of tuples being n-grams. If you want to have them computed from a list of sequences,
-                pass it as ``list_of_sequences`` instead.
             n: If ``list_of_sequences`` is passed, the number of elements per n-gram tuple. Ignored otherwise.
             k: If specified, the transition matrix will show only the top k n-grams.
             smooth: If specified, this is the minimum value in the transition matrix.
@@ -518,3 +532,129 @@ class PieceIndex(TypedSequence[PieceID], register_for=[PieceID]):
         self, values: Sequence[Tuple[str, str]], converter=PieceID._make, **kwargs
     ):
         super().__init__(values=values, converter=converter, **kwargs)
+
+
+PathLike: TypeAlias = Union[str, Path]
+
+
+@runtime_checkable
+class PLoader(Protocol):
+    def __init__(self, directory: Union[PathLike, Collection[PathLike]]):
+        pass
+
+    def iter_pieces(self) -> Iterator[Tuple[PieceID, PPiece]]:
+        ...
+
+
+class FacetName(Enum):
+    MEASURES = "measures"
+    NOTES = "notes"
+    RESTS = "rests"
+    NOTES_AND_RESTS = "notes_and_rests"
+    LABELS = "labels"
+    EXPANDED = "expanded"
+    FORM_LABELS = "form_labels"
+    CADENCES = "cadences"
+    EVENTS = "events"
+    CHORDS = "chords"
+
+
+class Aspect(Enum):
+    GLOBALKEY = "globalkey"
+    LOCALKEY = "localkey"
+    TPC = "tpc"
+
+
+@runtime_checkable
+class PFacet(Protocol):
+    """Protocol for all objects representing one data facet of one or several pieces."""
+
+    def get_aspect(self, key: [str, Enum]) -> [TypedSequence, TabularData]:
+        ...
+
+
+@runtime_checkable
+class PPiece(Protocol):
+    def get_facet(self, facet=FacetName) -> PFacet:
+        ...
+
+
+@runtime_checkable
+class PNotesTable(Protocol):
+    tpc: pd.Series
+
+
+@dataclass(frozen=True)
+class TabularData(ABC):
+    """Wrapper around a :obj:`pandas.DataFrame`."""
+
+    df: pd.DataFrame
+
+    @classmethod
+    def from_df(cls, df: pd.DataFrame):
+        """Subclasses can implement transformational logic."""
+        instance = cls(df=df)
+        return instance
+
+    def get_aspect(self, key: str) -> TypedSequence:
+        """In its basic form, get one of the columns as a :obj:`TypedSequence`.
+        Subclasses may offer additional aspects, such as transformed columns or subsets of the table.
+        """
+        series: pd.Series = self.df[key]
+        sequential_data = TypedSequence(series)
+        return sequential_data
+
+    def __getattr__(self, item):
+        """Enable using TabularData like a DataFrame."""
+        return getattr(self.df, item)
+
+
+class Facet(TabularData):
+    """Classes implementing the PFacet protocol."""
+
+    def get_aspect(self, key: Union[str, Enum]) -> TypedSequence:
+        """In its basic form, get one of the columns as a :obj:`TypedSequence`.
+        Subclasses may offer additional aspects, such as transformed columns or subsets of the table.
+        """
+        series: pd.Series = self.df[key] if isinstance(key, str) else self.df[key.value]
+        sequential_data = TypedSequence(series)
+        return sequential_data
+
+    pass
+
+
+class Harmonies(Facet):
+    @cached_property
+    def globalkey(self) -> str:
+        return self.get_aspect(key=Aspect.GLOBALKEY)[0]
+
+    def get_localkey_bigrams(self) -> Bigrams:
+        """Returns a TypedSequence of bigram tuples representing modulations between local keys."""
+        localkey_list = self.get_aspect(key=Aspect.LOCALKEY).get_changes()
+        return localkey_list.get_n_grams(n=2)
+
+    def get_chord_bigrams(self) -> Bigrams:
+        chords = self.get_aspect("chord")
+        return chords.get_n_grams(2)
+
+
+class Measures(Facet):
+    pass
+
+
+class Notes(Facet):
+    @cached_property
+    def tpc(self) -> TypedSequence:
+        series = self.get_aspect(Aspect.TPC)
+        return TypedSequence(series)
+
+
+if __name__ == "__main__":
+    df = ms3.load_tsv("~/corelli/metadata.tsv")
+    t = Facet(df)
+    print(t)
+    harmonies = Harmonies(ms3.load_tsv("~/corelli/harmonies/op01n01a.tsv"))
+    assert isinstance(harmonies, PFacet)
+    print(
+        f"Modulations in the globalkey {harmonies.globalkey}: {harmonies.get_localkey_bigrams()}"
+    )

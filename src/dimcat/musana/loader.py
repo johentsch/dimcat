@@ -8,64 +8,18 @@ from typing import Callable, List, Literal
 
 import ms3
 import pandas as pd
-from dimcat.dtypes import Bigrams, TypedSequence
+from dimcat.dtypes import Harmonies, Measures, Notes, TabularData, TypedSequence
 from dimcat.musana.harmony_types import Key, TonalHarmony
 from dimcat.musana.util import determine_era_based_on_year
 
-
-@dataclass(frozen=True)
-class TabularData(ABC):
-    _df: pd.DataFrame
-
-    @classmethod
-    def from_df(cls, df: pd.DataFrame):
-        instance = cls(_df=df)
-        return instance
-
-    def get_aspect(self, key: str) -> TypedSequence:
-        series: pd.Series = self._df[key]
-        sequential_data = TypedSequence(series)
-        return sequential_data
-
-
 # _____________________________ AspectInfo ______________________________________
-
-
-@dataclass(frozen=True)
-class HarmonyInfo(TabularData):
-    def modulation_bigrams_list(self) -> List[str]:
-        """Returns a list of str representing the modulation bigram. e.g., "f#_IV/V_bIII/V" """
-        globalkey = self._df["globalkey"][0]
-        localkey_list = self.get_aspect(key="localkey").get_changes()
-        mod_bigrams = localkey_list.get_n_grams(n=2)
-        mod_bigrams = ["_".join([item[0], item[1]]) for item in mod_bigrams]
-        bigrams = [globalkey + "_" + item for item in mod_bigrams]
-        return bigrams
-
-    def get_chord_bigrams(self) -> Bigrams:
-        chords = self.get_aspect("chord")
-        return chords.get_n_grams(2)
-
-
-@dataclass(frozen=True)
-class MeasureInfo(TabularData):
-    pass
-
-
-@dataclass(frozen=True)
-class NoteInfo(TabularData):
-    @cached_property
-    def tpc(self) -> TypedSequence:
-        series = self._df["tpc"]
-        sequential = TypedSequence.from_series(series=series)
-        return sequential
 
 
 @dataclass(frozen=True)
 class KeyInfo(TabularData):
     @cached_property
     def global_key(self) -> Key:
-        key_str = self._df["globalkey"][0]
+        key_str = self.df["globalkey"][0]
         if not isinstance(key_str, str):
             key = "NA"
         else:
@@ -74,7 +28,7 @@ class KeyInfo(TabularData):
 
     @cached_property
     def local_key(self) -> TypedSequence:
-        local_key_series = self._df["localkey"]
+        local_key_series = self.df["localkey"]
         sequential_data = TypedSequence.from_series(series=local_key_series)
         return sequential_data
 
@@ -126,9 +80,9 @@ class MetaCorporaMetaData:
 class PieceInfo:
     # containing the data for a single piece
     meta_info: PieceMetaData
-    harmony_info: HarmonyInfo
-    measure_info: MeasureInfo
-    note_info: NoteInfo
+    harmony_info: Harmonies
+    measure_info: Measures
+    note_info: Notes
     key_info: KeyInfo
 
     @classmethod
@@ -162,11 +116,11 @@ class PieceInfo:
                 "piece does not have all the required .tsv files in this corpus"
             )
 
-        harmony_info = HarmonyInfo.from_df(df=harmonies_df)
-        measure_info = MeasureInfo.from_df(df=measure_df)
-        note_info = NoteInfo.from_df(df=note_df)
+        harmony_info = Harmonies.from_df(df=harmonies_df)
+        measure_info = Measures.from_df(df=measure_df)
+        note_info = Notes.from_df(df=note_df)
 
-        key_df: pd.DataFrame = harmony_info._df[["globalkey", "localkey"]]
+        key_df: pd.DataFrame = harmony_info.df[["globalkey", "localkey"]]
         key_info = KeyInfo.from_df(df=key_df)
 
         piece_length = harmonies_df.shape[0]
@@ -226,7 +180,7 @@ class PieceInfo:
     @cached_property
     def get_tonal_harmony_sequential(self) -> TypedSequence:
         """Essentially get the "chord" column from the dataframe and transform each chord to a TonalHarmony object."""
-        dropped_nan_df = self.harmony_info._df.dropna(
+        dropped_nan_df = self.harmony_info.df.dropna(
             how="any", subset=["chord", "globalkey", "localkey"]
         )
         dropped_nan_df = dropped_nan_df.reset_index(drop=True)
@@ -266,9 +220,9 @@ class BaseCorpusInfo(ABC):
 class CorpusInfo(BaseCorpusInfo):
     # containing data for a single corpus
     meta_info: CorpusMetaData
-    harmony_info: HarmonyInfo
-    measure_info: MeasureInfo
-    note_info: NoteInfo
+    harmony_info: Harmonies
+    measure_info: Measures
+    note_info: Notes
     key_info: KeyInfo
 
     def filter_pieces_by_condition(
@@ -308,24 +262,24 @@ class CorpusInfo(BaseCorpusInfo):
 
         try:
             harmonies_df: pd.DataFrame = pd.concat(
-                [item.harmony_info._df for item in pieceinfo_list]
+                [item.harmony_info.df for item in pieceinfo_list]
             )
             measure_df: pd.DataFrame = pd.concat(
-                [item.measure_info._df for item in pieceinfo_list]
+                [item.measure_info.df for item in pieceinfo_list]
             )
             note_df: pd.DataFrame = pd.concat(
-                [item.note_info._df for item in pieceinfo_list]
+                [item.note_info.df for item in pieceinfo_list]
             )
         except Exception:
             raise Warning(
                 "piece does not have all the required .tsv files in this corpus"
             )
 
-        harmony_info = HarmonyInfo.from_df(df=harmonies_df)
-        measure_info = MeasureInfo.from_df(df=measure_df)
-        note_info = NoteInfo.from_df(df=note_df)
+        harmony_info = Harmonies.from_df(df=harmonies_df)
+        measure_info = Measures.from_df(df=measure_df)
+        note_info = Notes.from_df(df=note_df)
 
-        key_df: pd.DataFrame = harmony_info._df[["globalkey", "localkey"]]
+        key_df: pd.DataFrame = harmony_info.df[["globalkey", "localkey"]]
         key_info = KeyInfo.from_df(df=key_df)
 
         concat_composed_start_series = sum(
@@ -377,9 +331,9 @@ class CorpusInfo(BaseCorpusInfo):
 class MetaCorporaInfo(BaseCorpusInfo):
     # containing data for a collection corpora
     meta_info: MetaCorporaMetaData
-    harmony_info: HarmonyInfo
-    measure_info: MeasureInfo
-    note_info: NoteInfo
+    harmony_info: Harmonies
+    measure_info: Measures
+    note_info: Notes
     key_info: KeyInfo
 
     def filter_pieces_by_condition(
@@ -427,24 +381,24 @@ class MetaCorporaInfo(BaseCorpusInfo):
 
         try:
             harmonies_df: pd.DataFrame = pd.concat(
-                [item.harmony_info._df for item in corpusinfo_list]
+                [item.harmony_info.df for item in corpusinfo_list]
             )
             measure_df: pd.DataFrame = pd.concat(
-                [item.measure_info._df for item in corpusinfo_list]
+                [item.measure_info.df for item in corpusinfo_list]
             )
             note_df: pd.DataFrame = pd.concat(
-                [item.note_info._df for item in corpusinfo_list]
+                [item.note_info.df for item in corpusinfo_list]
             )
         except Exception:
             raise Warning(
                 "Corpus does not have all the required .tsv files in this corpus"
             )
 
-        harmony_info = HarmonyInfo.from_df(df=harmonies_df)
-        measure_info = MeasureInfo.from_df(df=measure_df)
-        note_info = NoteInfo.from_df(df=note_df)
+        harmony_info = Harmonies.from_df(df=harmonies_df)
+        measure_info = Measures.from_df(df=measure_df)
+        note_info = Notes.from_df(df=note_df)
 
-        key_df: pd.DataFrame = harmony_info._df[["globalkey", "localkey"]]
+        key_df: pd.DataFrame = harmony_info.df[["globalkey", "localkey"]]
         key_info = KeyInfo.from_df(df=key_df)
 
         concat_composed_start_series = sum(
@@ -521,5 +475,5 @@ if __name__ == "__main__":
         parent_corpus_path="~/corelli//", piece_name="op01n01a"
     )
 
-    result = piece.harmony_info._df[["globalkey", "localkey", "chord"]].to_numpy()
+    result = piece.harmony_info.df[["globalkey", "localkey", "chord"]].to_numpy()
     print(result)
