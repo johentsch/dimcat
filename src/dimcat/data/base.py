@@ -1,144 +1,181 @@
 """Class hierarchy for data types."""
 from __future__ import annotations
 
-import copy
 import logging
 from functools import lru_cache
-from typing import (
-    Collection,
-    Dict,
-    Iterable,
-    Iterator,
-    List,
-    Optional,
-    Tuple,
-    Type,
-    Union,
-)
+from typing import Dict, Iterator, List, Optional, Self, Tuple, Type, Union
 
-import ms3
 import pandas as pd
-from dimcat.base import Data
+from dimcat.base import Data, PipelineStep
 from dimcat.data.loader import infer_data_loader
-from dimcat.dtypes import ID, GroupID, PieceID, PieceIndex, PLoader, PPiece, SliceID
-from dimcat.utils.functions import clean_index_levels, typestrings2types
+from dimcat.dtypes import PieceID, PieceIndex, PLoader, PPiece, SomeID
+from dimcat.utils.functions import clean_index_levels
 from ms3._typing import ScoreFacet
 
 logger = logging.getLogger(__name__)
 
-PROCESSED_DATA_FIELDS: Dict[str, Tuple[str, ...]] = {
-    "SlicedData": (
-        "sliced",
-        "slice_info",
-    ),
-    "GroupedData": ("grouped_indices",),
-    "AnalyzedData": ("processed",),
-}
-"""Name of the data fields that the three types of processing add to any _Dataset object.
-Important for copying objects."""
-
 
 class Dataset(Data):
-    def __init__(self, data: Optional[Union["Dataset", ms3.Parse]] = None, **kwargs):
+    # region Initialization
+
+    def __init__(self, dataset: Optional[Dataset] = None, **kwargs):
         """
 
         Parameters
         ----------
-        data : Data
-            Convert a given Data object into a Corpus if possible.
+        dataset : Data
+
         kwargs
-            All keyword arguments are passed to load().
+
+
+
+        Args:
+            dataset: Instantiate from this Dataset by copying its fields, empty fields otherwise.
+            **kwargs: Dataset is cooperative and calls super().__init__(data=dataset, **kwargs)
         """
-        super().__init__(data=data, **kwargs)
-        self._data = None
-        """Protected attribute for storing and internally accessing the loaded data."""
+        super().__init__(data=dataset, **kwargs)
 
         self.loaders: List[PLoader] = []
+        """Stores the various loaders which, together, are responsible the original,
+        unprocessed :attr:`pieces` mapping."""
 
-        self.pieces: Dict[PieceID, PPiece] = {}
-        """{(corpus, fname) -> Any}
-        References to the individual pieces contained in the data. The exact type depends on the type of data.
+        self._pieces: Dict[PieceID, PPiece] = {}
+        """References to the individual pieces contained in the data. The exact type depends on the type of data.
+        Controlled through the property :attr:`pieces` which returns a copy and cannot be modified directly.
         """
 
-        self.indices: List[ID] = []
-        """List of indices (IDs) which serve for accessing individual pieces of data and
-        associated metadata. An index is a ('corpus_name', 'piece_name') tuple ("ID") that can have a third element
-        identifying a segment/chunk of a piece."""
+        self.piece_index: PieceIndex = PieceIndex([])
+        """List of PieceIDs used for accessing individual pieces of data and
+        associated metadata. A PieceID is a ('corpus', 'piece') NamedTuple."""
 
-        self.pipeline_steps = []
-        """The sequence of applied PipelineSteps that has led to the current state in reverse
-        order (first element was applied last)."""
+        self.pipeline_steps: List[PipelineStep] = []
+        """The sequence of applied PipelineSteps that has led to the current state."""
 
-        self.index_levels = {
-            "indices": ["corpus", "fname"],
-            "slicer": [],
-            "groups": [],
-            "processed": [],
-        }
-        """Keeps track of index level names. Also used for automatic naming of output files."""
+        if dataset is not None:
+            # If subclasses have a different logic of copying fields, they can override these methods
+            self._init_piece_index_from_dataset(dataset, **kwargs)
+            self._init_pieces_from_dataset(dataset, **kwargs)
+            self._init_pipeline_steps_from_dataset(dataset, **kwargs)
+            self._init_loaders_from_dataset(dataset, **kwargs)
 
-        self.group2pandas = None  # ToDo: deprecate this by using different datatypes for different types of results
+    def _init_piece_index_from_dataset(self, dataset: Dataset, **kwargs):
+        self.piece_index = PieceIndex(dataset.piece_index)
 
-        self.data = data
-        if len(kwargs) > 0:
-            self.load(**kwargs)
+    def _init_pieces_from_dataset(self, dataset: Dataset, **kwargs):
+        self._pieces = {PID: dataset.get_piece(PID) for PID in self.piece_index}
 
-    @property
-    def data(self) -> ms3.Parse:
-        """Get the data field in its raw form."""
-        return self._data
+    def _init_pipeline_steps_from_dataset(self, dataset: Dataset, **kwargs):
+        self.pipeline_steps = list(dataset.pipeline_steps)
 
-    @data.setter
-    def data(self, data_object: Optional[Union["Dataset", ms3.Parse]]) -> None:
-        """Check if the assigned object is suitable for conversion."""
-        if data_object is None:
-            self._data = ms3.Parse()
-            return
-        is_dataset_object = isinstance(data_object, Dataset)
-        is_parse_object = isinstance(data_object, ms3.Parse)
-        if not (is_dataset_object or is_parse_object):
-            raise TypeError(
-                f"{data_object.__class__} could not be converted to a DCML dataset."
-            )
-        if is_parse_object:
-            self._data = data_object
-            return
-        # else: got a Dataset object and need to copy its fields
-        self._data = data_object._data
-        self.pieces = dict(data_object.pieces)
-        # ^^^ doesn't copy the ms3.Parse and ms3.Piece objects, only the references ^^^
-        # vvv all other fields are deepcopied vvv
-        if isinstance(data_object, SlicedData) and not isinstance(self, SlicedData):
-            self.indices = sorted(set(ID[:2] for ID in data_object.indices))
-        elif self.name == "Dataset":
-            self.indices = []
-            self.reset_indices()
-        else:
-            self.indices = list(data_object.indices)
-        self.index_levels = copy.deepcopy(data_object.index_levels)
-        self.pipeline_steps = list(data_object.pipeline_steps)
-        self.group2pandas = data_object.group2pandas
-        if self.name == "Dataset":
-            return
-        typestring2dtype: Dict[str, type] = dict(
-            zip(
-                PROCESSED_DATA_FIELDS.keys(),
-                typestrings2types(PROCESSED_DATA_FIELDS.keys()),
-            )
-        )
-        for typestring, optional_fields in PROCESSED_DATA_FIELDS.items():
-            dtype = typestring2dtype[typestring]
-            if not (isinstance(data_object, dtype) and isinstance(self, dtype)):
-                continue
-            for field in optional_fields:
-                setattr(self, field, copy.deepcopy(getattr(data_object, field)))
+    def _init_loaders_from_dataset(self, dataset: Dataset, **kwargs):
+        self.loaders = list(data.loaders)
+
+    def copy(self, **kwargs) -> Self:
+        """Return a copy of the Dataset."""
+        return self.__class__(dataset=self, **kwargs)
+
+    # endregion Initialization
+
+    # region Properties
 
     @property
-    def n_indices(self):
-        return len(self.indices)
+    def n_indices(self) -> int:
+        """Number of pieces currently selected. Different from n_pieces."""
+        return len(self.piece_index)
 
-    def copy(self):
-        return self.__class__(data=self)
+    @property
+    def n_pieces(self) -> int:
+        """Number of pieces that this dataset has access to. For a Dataset that has been initialized as a subset,
+        this number would increase with a call to :meth:`reset_indices`.
+        """
+        return len(self._pieces)
+
+    @property
+    def pieces(self) -> Dict[PieceID, PPiece]:
+        """References to the individual pieces contained in the dataset. The exact type depends on the type of data."""
+        return dict(self._pieces)
+
+    # endregion Properties
+
+    # region Loaders
+
+    def _retrieve_pieces_from_loader(self, loader: PLoader):
+        """Add the Piece objects that the given loader yields to :attr:`pieces` and add their IDs to the
+        :attr:`self.piece_index`.
+        """
+        for PID, piece in loader.iter_pieces():
+            self._set_piece(piece_id=PID, piece_obj=piece)
+
+    def _set_piece(self, piece_id: PieceID, piece_obj: PPiece) -> None:
+        """Add a piece to the dataset.
+
+        Raises:
+            ValueError if ``piece_id`` is already present.
+        """
+        if piece_id in self._pieces:
+            raise ValueError(
+                f"Dataset already contains a piece with PieceID {piece_id}."
+            )
+        if piece_id in self.piece_index:
+            raise ValueError(
+                f"Dataset.piece_index already contains PieceID {piece_id} although it "
+                f"had not been present in .pieces"
+            )
+        self._pieces[piece_id] = piece_obj
+        self.piece_index.append(piece_id)
+
+    def attach_loader(self, loader: PLoader):
+        """Add an initialized loader to :attr:`loaders` and add the pieces it yields to :attr:`pieces`."""
+        self.loaders.append(loader)
+        self._retrieve_pieces_from_loader(loader)
+
+    def load(
+        self,
+        directory: Optional[Union[str, List[str]]],
+        loader: Optional[Type[PLoader]] = None,
+        **kwargs,
+    ) -> None:
+        """Add to the dataset all pieces that ``loader`` creates from ``directory``.
+        If no loader class is specified, DiMCAT will try to infer it.
+
+        Args:
+            directory: The path(s) to all the data to load.
+            loader:
+                Loader class to be initialized with the keyword arguments ``directory`` and ``**kwargs``.
+                If none is specified, DiMCAT will call :func:`infer_data_loader` on each directory.
+            **kwargs:
+                Keyword arguments that the specified loader class accepts. If the loader class is to be inferred,
+                only arguments specified in :meth:`.dtypes.PLoader.__init__` are safe.
+        """
+        if isinstance(directory, str):
+            directory = [directory]
+        _loader = loader
+        for d in directory:
+            if loader is None:
+                _loader = infer_data_loader(d)
+            loader_object = _loader(directory=d, **kwargs)
+            self.attach_loader(loader_object)
+
+    def reset_pieces(self):
+        """Iterate through all attached loaders and"""
+        self.piece_index = PieceIndex([])
+        for loader in self.loaders:
+            self._retrieve_pieces_from_loader(loader)
+
+    # endregion Loaders
+
+    # region Data access
+
+    def get_piece(self, PID: Union[PieceID, Tuple[str, str]]) -> PPiece:
+        """Get a Piece object by its ('corpus', 'piece') PieceID"""
+        piece = self._pieces.get(PID)
+        if piece is None:
+            raise KeyError(f"ID not found in .pieces: {PID}")
+        return piece
+
+    def iter_pieces(self) -> Iterator[Tuple[PieceID, PPiece]]:
+        for PID in self.piece_index:
+            yield PID, self.get_piece(PID)
 
     def get_facet(self, what: ScoreFacet) -> pd.DataFrame:
         """Uses _.iter_facet() to collect and concatenate all DataFrames for a particular facet.
@@ -161,14 +198,6 @@ class Dataset(Data):
         )
         return clean_index_levels(concatenated_groups)
 
-    def get_indices(self) -> List[PieceIndex]:
-        """Get all available Index objects (currently only PieceIndex)."""
-        return [self.get_piece_index()]
-
-    def get_piece_index(self) -> PieceIndex:
-        """Get the currently selected PieceIDs as PieceIndex."""
-        return PieceIndex(self.indices)
-
     @lru_cache()
     def get_item(self, ID: PieceID, what: ScoreFacet) -> Optional[pd.DataFrame]:
         """Retrieve a DataFrame pertaining to the facet ``what`` of the piece ``index``.
@@ -181,7 +210,7 @@ class Dataset(Data):
             DataFrame representing an entire score facet, or a chunk (slice) of it.
         """
 
-        file, df = self.pieces[ID].get_facet(what, interval_index=True)
+        file, df = self._pieces[ID].get_facet(what, interval_index=True)
         logger.debug(f"Retrieved {what} from {file}.")
         if df is not None and not isinstance(df.index, pd.IntervalIndex):
             logger.info(f"'{what}' of {ID} does not come with an IntervalIndex")
@@ -226,7 +255,7 @@ class Dataset(Data):
                 f"Previously applied PipelineSteps do not include any {of_type}: {self.pipeline_steps}"
             )
 
-    def iter_facet(self, what: ScoreFacet) -> Iterator[Tuple[ID, pd.DataFrame]]:
+    def iter_facet(self, what: ScoreFacet) -> Iterator[Tuple[SomeID, pd.DataFrame]]:
         """Iterate through facet DataFrames.
 
         Args:
@@ -237,17 +266,15 @@ class Dataset(Data):
             Facet DataFrame.
         """
         for idx, piece in self.iter_pieces():
-            _, df = piece.get_parsed(facet=what)
+            _, df = piece.get_parsed(facet=what, interval_index=True)
             if df is None or len(df.index) == 0:
                 logger.info(f"{idx} has no {what}.")
                 continue
             yield idx, df
 
-    def iter_pieces(self) -> Iterator[Tuple[PieceID, ms3.Piece]]:
-        for idx in self.indices:
-            yield idx, self.pieces[idx]
-
-    def set_indices(self, new_indices: Union[List[ID], Dict[ID, List[ID]]]) -> None:
+    def set_indices(
+        self, new_indices: Union[List[SomeID], Dict[SomeID, List[SomeID]]]
+    ) -> None:
         """Replace :attr:`indices` with a new list of IDs.
 
         Args:
@@ -257,7 +284,7 @@ class Dataset(Data):
         """
         if isinstance(new_indices, dict):
             new_indices = sum(new_indices.values(), [])
-        self.indices = new_indices
+        self.piece_index = new_indices
 
     def track_pipeline(
         self,
@@ -300,52 +327,6 @@ class Dataset(Data):
             self.index_levels["groups"] = self.index_levels["groups"] + [grouper]
         if slicer is not None:
             self.index_levels["slicer"] = [slicer]
-
-    def attach_loader(self, loader: PLoader):
-        self.loaders.append(loader)
-        self._retrieve_pieces_from_loader(loader)
-
-    def _add_ids(self, ids: Union[PieceID, Iterable[PieceID]]):
-        """Adds new IDs to :attr:`indices`."""
-        if isinstance(ids, PieceID):
-            ids = [ids]
-        for PID in ids:
-            if PID in self.pieces:
-                self.indices.append(PID)
-            else:
-                logger.warning(f"{PID} does not point to an existing Piece.")
-                continue
-
-    def _retrieve_pieces_from_loader(self, loader: PLoader):
-        new_ids = []
-        for PID, piece in loader.iter_pieces():
-            new_ids.append(PID)
-            self.pieces[PID] = piece
-        self._add_ids(new_ids)
-
-    def load(
-        self,
-        directory: Optional[Union[str, List[str]]],
-        loader: Optional[Type[PLoader]] = None,
-        **kwargs,
-    ):
-        """
-        Load and parse all of the desired raw data and metadata.
-
-        Parameters
-        ----------
-        directory : str
-            The path(s) to all the data to load.
-        loader:
-        """
-        if isinstance(directory, str):
-            directory = [directory]
-        _loader = loader
-        for d in directory:
-            if loader is None:
-                _loader = infer_data_loader(d)
-            loader_object = _loader(directory=d, **kwargs)
-            self.attach_loader(loader_object)
 
     def group_of_values2series(self, group_dict) -> pd.Series:
         """Converts an {ID -> processing_result} dict into a Series."""
@@ -421,363 +402,11 @@ class Dataset(Data):
         # TODO: This method should include a call to clean_multiindex_levels and make use of self.index_levels
         return multiindex
 
-    def reset_indices(self):
-        """"""
-        self.indices = []
-        for loader in self.loaders:
-            self._retrieve_pieces_from_loader(loader)
-
     def __str__(self):
-        return str(self.get_piece_index())
+        return str(self.piece_index)
 
     def __repr__(self):
-        return str(self.get_piece_index())
-
-
-class _ProcessedDataMixin(Data):
-    """Base class for types of processed :obj:`_Dataset` objects.
-    Processed datatypes are created by passing a _Dataset object. The new object will be a copy of the Data with the
-    :attr:`prefix` prepended. Subclasses should have an __init__() method that calls super().__init__() and then
-    adds additional fields.
-    """
-
-    assert_types: Union[str, Collection[str]] = ["Dataset"]
-    """Objects raise TypeError upon instantiation if the passed data are not of one of these types."""
-    excluded_types: Union[str, Collection[str]] = []
-    """Objects raise TypeError upon instantiation if the passed data are of one of these types."""
-    type_mapping: Dict[Union[str, Collection[str]], str] = {}
-    """{Input type(s) -> Output type}. __new__() picks the first 'value' where the input Data are of type 'key'.
-    Objects raise TypeError if nothing matches. object or Data can be used as fallback/default key.
-    """
-
-    def __new__(cls, data: Data, **kwargs):
-        """Depending on the type of ``data`` (currently only :class:`Dataset` is implemented),
-        the new object is turned into the Dataset subtype that corresponds to the performed processing step.
-
-        This method uses the class properties :attr:`assert_types` and :attr:`excluded_types` to determine if the
-        input Dataset can actually undergo the current type of processing. Then it uses the class property
-        :attr:`type_mapping` to determine the type of the new object to be created.
-
-
-        Args:
-            data: Dataset to be converted into a processed subtype.
-            **kwargs:
-        """
-        assert_types = typestrings2types(cls.assert_types)
-        if not isinstance(data, assert_types):
-            raise TypeError(
-                f"{cls.__name__} objects can only be created from {cls.assert_types}, not '{type(data).__name__}'"
-            )
-        excluded_types = typestrings2types(cls.excluded_types)
-        if isinstance(data, excluded_types):
-            raise TypeError(
-                f"{cls.__name__} objects cannot be created from '{type(data).__name__}' because it is among the "
-                f"excluded_types {cls.excluded_types}."
-            )
-        type_mapping = {
-            typestrings2types(input_type): typestrings2types(output_type)[0]
-            for input_type, output_type in cls.type_mapping.items()
-        }
-        new_obj_type = None
-        for input_type, output_type in type_mapping.items():
-            if isinstance(data, input_type):
-                new_obj_type = output_type
-                break
-        if new_obj_type is None:
-            raise TypeError(
-                f"{cls.__name__} no output type defined for '{type(data)}', only for {list(type_mapping.keys())}."
-            )
-        obj = object.__new__(new_obj_type)
-        # obj.__init__(data=data, **kwargs)
-        return obj
-
-    def __init__(self, data: Data, **kwargs):
-        super().__init__(data=data, **kwargs)
-
-
-class SlicedData(_ProcessedDataMixin):
-    """A type of Data object that contains the slicing information created by a Slicer. It slices all requested
-    facets based on that information.
-    """
-
-    excluded_types = ["AnalyzedData", "SlicedData"]
-    type_mapping = {
-        "GroupedDataset": "GroupedSlicedDataset",
-        "Dataset": "SlicedDataset",
-    }
-
-    def __new__(
-        cls, data: Data, **kwargs
-    ) -> Union["SlicedDataset", "GroupedSlicedDataset"]:
-        return super().__new__(cls, data=data, **kwargs)
-
-    def __init__(self, data: Data, **kwargs):
-        logger.debug(f"{type(self).__name__} -> before {super()}.__init__()")
-        super().__init__(data=data, **kwargs)
-        logger.debug(f"{type(self).__name__} -> after {super()}.__init__()")
-        if not hasattr(self, "sliced"):
-            self.sliced = {}
-            """Dict for sliced data facets."""
-        if not hasattr(self, "slice_info"):
-            self.slice_info = {}
-            """Dict holding metadata of slices (e.g. the localkey of a segment)."""
-
-    def get_slice(self, index, what):
-        if what in self.sliced and index in self.sliced[what]:
-            return self.sliced[what][index]
-
-    def get_slice_info(self) -> pd.DataFrame:
-        """Concatenates slice_info Series and returns them as a DataFrame."""
-        if len(self.slice_info) == 0:
-            logger.info("No slices available.")
-            return pd.DataFrame()
-        concatenated_info = pd.concat(
-            self.slice_info.values(), keys=self.slice_info.keys(), axis=1
-        ).T
-        concatenated_info.index.rename(self.index_levels["indices"], inplace=True)
-        return concatenated_info
-
-    def iter_slice_info(self) -> Iterator[Tuple[SliceID, pd.Series]]:
-        """Iterate through concatenated slice_info Series for each group."""
-        yield from self.slice_info.items()
-
-
-class GroupedData(_ProcessedDataMixin):
-    """A type of Data object that behaves like its predecessor but returns and iterates through groups."""
-
-    type_mapping = {
-        (
-            "AnalyzedGroupedSlicedDataset",
-            "AnalyzedSlicedDataset",
-        ): "AnalyzedGroupedSlicedDataset",
-        "GroupedSlicedDataset": "GroupedSlicedDataset",
-        ("AnalyzedGroupedDataset", "AnalyzedDataset"): "AnalyzedGroupedDataset",
-        "SlicedDataset": "GroupedSlicedDataset",
-        "Dataset": "GroupedDataset",
-    }
-
-    def __new__(
-        cls, data: Data, **kwargs
-    ) -> Union[
-        "GroupedDataset",
-        "GroupedSlicedDataset",
-        "AnalyzedGroupedDataset",
-        "AnalyzedGroupedSlicedDataset",
-    ]:
-        return super().__new__(cls, data=data, **kwargs)
-
-    def __init__(self, data: Data, **kwargs):
-        logger.debug(f"{type(self).__name__} -> before {super()}.__init__()")
-        super().__init__(data=data, **kwargs)
-        logger.debug(f"{type(self).__name__} -> after {super()}.__init__()")
-        if not hasattr(self, "grouped_indices"):
-            if hasattr(data, "grouped_indices"):
-                self.grouped_indices = data.grouped_indices
-            else:
-                self.grouped_indices: Dict[GroupID, List[ID]] = {(): self.indices}
-                """{group_key -> indices} dictionary of indices (IDs) which serve for accessing individual pieces of
-                data and associated metadata. An index is a ('corpus_name', 'piece_name') tuple ("ID")
-                that can have a third element identifying a segment/chunk of a piece.
-                The group_keys are an empty tuple by default; with every applied Grouper,
-                the length of all group_keys grows by one and the number of group_keys grows or stays the same."""
-
-    def iter_grouped_indices(self) -> Iterator[Tuple[str, List[ID]]]:
-        """Iterate through groups of indices as defined by the previously applied Groupers.
-
-        Yields
-        -------
-        :obj:`tuple` of :obj:`str`
-            A tuple of keys reflecting the group hierarchy
-        :obj:`list` of :obj:`tuple`
-            A list of IDs belonging to the same group.
-        """
-        if len(self.indices) == 0:
-            raise ValueError("No data has been loaded.")
-        if any(len(index_list) == 0 for index_list in self.grouped_indices.values()):
-            logger.warning("Data object contains empty groups.")
-        yield from self.grouped_indices.items()
-
-    def iter_grouped_slice_info(self) -> Iterator[Tuple[tuple, pd.DataFrame]]:
-        """Iterate through concatenated slice_info DataFrame for each group."""
-        for group, index_group in self.iter_grouped_indices():
-            group_info = {ix: self.slice_info[ix] for ix in index_group}
-            group_df = pd.concat(group_info.values(), keys=group_info.keys(), axis=1).T
-            group_df.index = self._rename_multiindex_levels(
-                group_df.index, self.index_levels["indices"]
-            )
-            yield group, group_df
-
-
-class AnalyzedData(_ProcessedDataMixin):
-    """A type of Data object that contains the results of an Analyzer and knows how to plot it."""
-
-    type_mapping = {
-        (
-            "AnalyzedGroupedSlicedDataset",
-            "GroupedSlicedDataset",
-        ): "AnalyzedGroupedSlicedDataset",
-        ("AnalyzedSlicedDataset", "SlicedDataset"): "AnalyzedSlicedDataset",
-        ("AnalyzedGroupedDataset", "GroupedDataset"): "AnalyzedGroupedDataset",
-        "Dataset": "AnalyzedDataset",
-    }
-
-    def __new__(
-        cls, data: Data, **kwargs
-    ) -> Union[
-        "AnalyzedDataset",
-        "AnalyzedGroupedDataset",
-        "AnalyzedSlicedDataset",
-        "AnalyzedGroupedSlicedDataset",
-    ]:
-        return super().__new__(cls, data=data, **kwargs)
-
-    def __init__(self, data: Data, **kwargs):
-        logger.debug(f"{type(self).__name__} -> before {super()}.__init__()")
-        super().__init__(data=data, **kwargs)
-        logger.debug(f"{type(self).__name__} -> after {super()}.__init__()")
-        if not hasattr(self, "processed"):
-            if hasattr(data, "processed"):
-                self.processed = data.processed
-            else:
-                self.processed: List["Result"] = []
-                """Analyzers store there result here using :meth:`set_result`."""
-
-    def set_result(self, analyzer: "Analyzer", result: "Result"):  # noqa: F821
-        assert analyzer == self.get_previous_pipeline_step()
-        self.processed = [result] + self.processed
-
-    # @overload
-    # def get(self, as_pandas: bool = Literal[True]) -> Pandas:
-    #     ...
-    #
-    # @overload
-    # def get(self, as_pandas: bool = Literal[False]) -> Dict[GroupID, Any]:
-    #     ...
-    #
-    # def get(self, as_pandas: bool = True) -> Union[Pandas, Dict[GroupID, Any]]:
-    #     """Collects the results of :meth:`iter` to retrieve all processed data at once.
-    #
-    #     Args:
-    #         as_pandas:
-    #             By default, the result is a pandas DataFrame or Series where the first levels
-    #             display group identifiers (if any). Pass False to obtain a nested {group -> group_result}
-    #             dictionary instead.
-    #
-    #     Returns:
-    #         The contents of :attr:`processed` in original or adapted form.
-    #     """
-    #     if len(self.processed) == 0:
-    #         logger.info("No data has been processed so far.")
-    #         return
-    #     results = {group: result for group, result in self.iter(as_pandas=as_pandas)}
-    #     if not as_pandas:
-    #         return results
-    #     if self.group2pandas is None:
-    #         return pd.Series(results)
-    #     # default: concatenate to a single pandas object
-    #     if len(results) == 1 and () in results:
-    #         pandas_obj = pd.concat(results.values())
-    #     else:
-    #         try:
-    #             pandas_obj = pd.concat(
-    #                 results.values(),
-    #                 keys=results.keys(),
-    #                 names=self.index_levels["groups"],
-    #             )
-    #         except ValueError:
-    #             logger.info(self.index_levels["groups"])
-    #             logger.info(results.keys())
-    #             raise
-    #     return clean_index_levels(pandas_obj)
-    #
-    def get_result_object(self, idx=0):
-        return self.processed[idx]
-
-    def get_results(self) -> pd.DataFrame:
-        result_obj = self.get_result_object()
-        return result_obj.get_results()
-
-    def get_group_results(self) -> pd.DataFrame:
-        result_obj = self.get_result_object()
-        return result_obj.get_group_results()
-
-    def iter_results(self):
-        result_obj = self.get_result_object()
-        yield from result_obj.iter_results()
-
-    def iter_group_results(self):
-        result_obj = self.get_result_object()
-        yield from result_obj.iter_group_results()
-
-    # @overload
-    # def iter(
-    #     self, as_pandas: bool = Literal[False], ignore_groups: bool = Literal[False]
-    # ) -> Iterator[Tuple[GroupID, Union[Dict[ID, Any], Any]]]:
-    #     ...
-    #
-    # @overload
-    # def iter(
-    #     self, as_pandas: bool = Literal[True], ignore_groups: bool = Literal[False]
-    # ) -> Iterator[Tuple[GroupID, Union[Pandas, Any]]]:
-    #     ...
-    #
-    # @overload
-    # def iter(
-    #     self, as_pandas: bool = Literal[False], ignore_groups: bool = Literal[True]
-    # ) -> Iterator[Union[Tuple[ID, Any], Any]]:
-    #     ...
-    #
-    # @overload
-    # def iter(
-    #     self, as_pandas: bool = Literal[True], ignore_groups: bool = Literal[True]
-    # ) -> Iterator[Union[Pandas, Any]]:
-    #     ...
-    #
-    # def iter(
-    #     self, as_pandas: bool = True, ignore_groups: bool = False
-    # ) -> Iterator[
-    #     Union[
-    #         Tuple[GroupID, Union[Dict[ID, Any], Any]],
-    #         Tuple[GroupID, Union[Pandas, Any]],
-    #         Union[Tuple[ID, Any], Any],
-    #         Union[Pandas, Any],
-    #     ]
-    # ]:
-    #     """Iterate through :attr:`processed` data.
-    #
-    #     Args:
-    #         as_pandas:
-    #             Setting this value to False corresponds to iterating through .processed.items(),
-    #             where keys are group IDs and values are results for Analyzers that compute
-    #             one result per group, or {ID -> result} dicts for Analyzers that compute
-    #             one result per item per group. The default value (True) has no effect in the first case,
-    #             but in the second case, the dictionary will be converted to a Series if the conversion method is
-    #             set in :attr:`group2pandas`.
-    #         ignore_groups:
-    #             If set to True, the iteration loop is flattened and does not include group identifiers. If as_pandas
-    #             is False (default), and the applied Analyzer computes one {ID -> result} dict per group,
-    #             this will correspond to iterating through the (ID, result) tuples for all groups.
-    #
-    #     Yields:
-    #         The result of the last applied Analyzer for each group or for each item of each group.
-    #     """
-    #     if ignore_groups and not as_pandas:
-    #         raise ValueError(
-    #             "If you set 'as_dict' and 'ignore_groups' are in conflict, choose one or use _.get()."
-    #         )
-    #     for group, result in self.processed.items():
-    #         if ignore_groups:
-    #             if self.group2pandas is None:
-    #                 yield result
-    #             elif as_pandas:
-    #                 yield self.convert_group2pandas(result)
-    #             else:
-    #                 yield from result.items()
-    #         else:
-    #             if as_pandas and self.group2pandas is not None:
-    #                 yield group, self.convert_group2pandas(result)
-    #             else:
-    #                 yield group, result
+        return str(self.piece_index)
 
 
 def remove_corpus_from_ids(result):

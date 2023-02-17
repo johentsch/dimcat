@@ -48,7 +48,7 @@ class PieceID(NamedTuple):
 Pandas: TypeAlias = Union[pd.Series, pd.DataFrame]
 GroupID: TypeAlias = tuple
 SliceID: TypeAlias = Tuple[str, str, pd.Interval]
-ID: TypeAlias = Union[PieceID, SliceID]
+SomeID: TypeAlias = Union[PieceID, SliceID]
 T_co = TypeVar("T_co", covariant=True)
 T_hash = TypeVar("T_hash", bound=Hashable, covariant=True)
 C = TypeVar("C")  # convertible
@@ -445,6 +445,8 @@ class TypedSequence(Sequence[T_co]):
     def __eq__(self, other) -> bool:
         """Considered as equal when 'other' is a Sequence containing the same values."""
         if isinstance(other, Sequence):
+            if len(self._values) != len(other):
+                return False
             return all(a == b for a, b in zip(self.values, other))
         return False
 
@@ -533,6 +535,15 @@ class PieceIndex(TypedSequence[PieceID], register_for=[PieceID]):
     ):
         super().__init__(values=values, converter=converter, **kwargs)
 
+    def __hash__(self):
+        return hash(tuple(self.values))
+
+    def __repr__(self):
+        return f"{self.name} of length ({len(self._values)}"
+
+    def __str__(self):
+        return f"{self.name} of length ({len(self._values)}"
+
 
 PathLike: TypeAlias = Union[str, Path]
 
@@ -575,7 +586,7 @@ class PFacet(Protocol):
 
 @runtime_checkable
 class PPiece(Protocol):
-    def get_facet(self, facet=FacetName) -> PFacet:
+    def get_facet(self, facet=FacetName, **kwargs) -> PFacet:
         ...
 
 

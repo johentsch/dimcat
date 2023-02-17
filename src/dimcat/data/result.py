@@ -4,8 +4,9 @@ from typing import Iterable, Optional, Tuple, Union
 
 import pandas as pd
 from dimcat.base import Data
-from dimcat.data.base import AnalyzedData, Dataset, GroupedData, logger
-from dimcat.dtypes import ID, GroupID
+from dimcat.data import AnalyzedData, GroupedData
+from dimcat.data.base import Dataset, logger
+from dimcat.dtypes import GroupID, SomeID
 from ms3 import pretty_dict
 
 
@@ -56,7 +57,7 @@ class Result(Data):
             level_names = "group"
         return self._concat_results(group_results, level_names=level_names)
 
-    def _aggregate_results_by_ids(self, indices: Iterable[ID]):
+    def _aggregate_results_by_ids(self, indices: Iterable[SomeID]):
         group_results = [
             self.result_dict[idx] for idx in indices if idx in self.result_dict
         ]

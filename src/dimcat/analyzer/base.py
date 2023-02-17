@@ -6,7 +6,7 @@ from typing import Any, Collection, Iterator, Tuple, Type, TypeVar, Union
 import dimcat.data as data_module
 from dimcat.base import PipelineStep
 from dimcat.data import AnalyzedData, Dataset
-from dimcat.dtypes import ID
+from dimcat.dtypes import SomeID
 from dimcat.utils import typestrings2types
 
 logger = logging.getLogger(__name__)
@@ -68,7 +68,7 @@ class Analyzer(PipelineStep, ABC):
         """Static method that performs the actual computation takes place."""
 
     @abstractmethod
-    def data_iterator(self, data: AnalyzedData) -> Iterator[Tuple[ID, Any]]:
+    def data_iterator(self, data: AnalyzedData) -> Iterator[Tuple[SomeID, Any]]:
         """How a particular analyzer iterates through a dataset, getting the chunks passed to :meth:`compute`."""
         yield from data
 

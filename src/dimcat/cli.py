@@ -227,7 +227,7 @@ def apply_pipeline(corpus, slicers, groupers):
 def main(args):
     setup_logging(args.loglevel)
     corpus = Dataset(directory=args.dir)
-    if len(corpus.pieces) == 0:
+    if len(corpus._pieces) == 0:
         _logger.error(f"Didn't find anything to analyze here in {args.dir}")
         return
     pre_processed = apply_pipeline(corpus, args.slicers, args.groupers)

@@ -143,7 +143,7 @@ def slicer(request) -> Slicer:
 def apply_slicer(slicer, dataset) -> SlicedDataset:
     sliced_data = slicer.process_data(dataset)
     print(
-        f"\n{len(dataset.indices)} indices before slicing, after: {len(sliced_data.indices)}"
+        f"\n{len(dataset.piece_index)} indices before slicing, after: {len(sliced_data.indices)}"
     )
     assert len(sliced_data.sliced) > 0
     assert len(sliced_data.slice_info) > 0
@@ -235,5 +235,5 @@ def pipelined_data(pipeline) -> Dataset:
 )
 def filter(request, dataset) -> Filter:
     filtered_data = request.param.process_data(dataset)
-    print(f"\n{pretty_dict(filtered_data.indices)}")
+    print(f"\n{pretty_dict(filtered_data.piece_index)}")
     return filtered_data

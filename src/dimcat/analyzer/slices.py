@@ -3,7 +3,7 @@ from typing import Iterator, List, Literal, Tuple
 import pandas as pd
 from dimcat.analyzer.base import Analyzer
 from dimcat.data import AnalyzedGroupedDataset, AnalyzedSlicedDataset
-from dimcat.dtypes import ID
+from dimcat.dtypes import SomeID
 
 
 class SliceInfoAnalyzer(Analyzer):
@@ -29,7 +29,7 @@ class GroupedSliceInfoAnalyzer(SliceInfoAnalyzer):
 
     def data_iterator(
         self, data: AnalyzedGroupedDataset
-    ) -> Iterator[Tuple[ID, pd.DataFrame]]:
+    ) -> Iterator[Tuple[SomeID, pd.DataFrame]]:
         yield from data.iter_grouped_slice_info()
 
 
