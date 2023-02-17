@@ -1,9 +1,3 @@
-.. _license:
-
-=======
-License
-=======
-
 GNU General Public License
 ==========================
 

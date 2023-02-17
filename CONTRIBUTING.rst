@@ -1,33 +1,8 @@
-.. todo:: THIS IS SUPPOSED TO BE AN EXAMPLE. MODIFY IT ACCORDING TO YOUR NEEDS!
-
-   The document assumes you are using a source repository service that promotes a
-   contribution model similar to `GitHub's fork and pull request workflow`_.
-   While this is true for the majority of services (like GitHub, GitLab,
-   BitBucket), it might not be the case for private repositories (e.g., when
-   using Gerrit).
-
-   Also notice that the code examples might refer to GitHub URLs or the text
-   might use GitHub specific terminology (e.g., *Pull Request* instead of *Merge
-   Request*).
-
-   Please make sure to check the document having these assumptions in mind
-   and update things accordingly.
-
-.. todo:: Provide the correct links/replacements at the bottom of the document.
-
-.. todo:: You might want to have a look on `PyScaffold's contributor's guide`_,
-
-   especially if your project is open source. The text should be very similar to
-   this template, but there are a few extra contents that you might decide to
-   also include, like mentioning labels of your issue tracker or automated
-   releases.
-
-
 ============
 Contributing
 ============
 
-Welcome to ``dimcat`` contributor's guide.
+Welcome to ``DiMCAT`` contributor's guide.
 
 This document focuses on getting any potential contributor familiarized
 with the development processes, but `other kinds of contributions`_ are also
@@ -46,7 +21,7 @@ guidelines.
 Issue Reports
 =============
 
-If you experience bugs or general issues with ``dimcat``, please have a look
+If you experience bugs or general issues with ``DiMCAT``, please have a look
 on the `issue tracker`_. If you don't see anything useful there, please feel
 free to fire an issue report.
 
@@ -65,32 +40,15 @@ you help us to identify the root cause of the issue.
 Documentation Improvements
 ==========================
 
-You can help improve ``dimcat`` docs by making them more readable and coherent, or
+You can help improve ``DiMCAT`` docs by making them more readable and coherent, or
 by adding missing information and correcting mistakes.
 
-``dimcat`` documentation uses Sphinx_ as its main documentation compiler.
+``DiMCAT`` documentation uses Sphinx_ as its main documentation compiler.
 This means that the docs are kept in the same repository as the project code, and
 that any documentation update is done in the same way was a code contribution.
+The documentation is written in reStructuredText_ and includes the myst-nb_ extension.
 
-.. todo:: Don't forget to mention which markup language you are using.
 
-    e.g.,  reStructuredText_ or CommonMark_ with MyST_ extensions.
-
-.. todo:: If your project is hosted on GitHub, you can also mention the following tip:
-
-   .. tip::
-      Please notice that the `GitHub web interface`_ provides a quick way of
-      propose changes in ``dimcat``'s files. While this mechanism can
-      be tricky for normal code contributions, it works perfectly fine for
-      contributing to the docs, and can be quite handy.
-
-      If you are interested in trying this method out, please navigate to
-      the ``docs`` folder in the source repository_, find which file you
-      would like to propose changes and click in the little pencil icon at the
-      top, to open `GitHub's code editor`_. Once you finish editing the file,
-      please write a message in the form at the bottom of the page describing
-      which changes have you made and what are the motivations behind them and
-      submit your proposal.
 
 When working on documentation changes in your local machine, you can
 compile them using |tox|_::
@@ -131,7 +89,7 @@ This can easily be done via either |virtualenv|_::
 
 or Miniconda_::
 
-    conda create -n dimcat python=3 six virtualenv pytest pytest-cov
+    conda create -n dimcat python=3.10
     conda activate dimcat
 
 Clone the repository
@@ -142,7 +100,7 @@ Clone the repository
    page. This creates a copy of the code under your account on |the repository service|.
 #. Clone this copy to your local disk::
 
-    git clone git@github.com:YourLogin/dimcat.git
+    git clone git@github.com:DCMLab/dimcat.git
     cd dimcat
 
 #. You should run::
@@ -158,7 +116,7 @@ Clone the repository
     pip install pre-commit
     pre-commit install
 
-   ``dimcat`` comes with a lot of hooks configured to automatically help the
+   ``DiMCAT`` comes with a lot of hooks configured to automatically help the
    developer to check the code being written.
 
 Implement your changes
@@ -278,14 +236,9 @@ Maintainer tasks
 Releases
 --------
 
-.. todo:: This section assumes you are using PyPI to publicly release your package.
-
-   If instead you are using a different/private package index, please update
-   the instructions accordingly.
-
 If you are part of the group of maintainers and have correct user permissions
 on PyPI_, the following steps can be used to release a new version for
-``dimcat``:
+``DiMCAT``:
 
 #. Make sure all unit tests are successful.
 #. Tag the current commit on the main branch with a release tag, e.g., ``v1.2.3``.
@@ -314,8 +267,8 @@ on PyPI_, the following steps can be used to release a new version for
 .. |the repository service| replace:: GitHub
 .. |contribute button| replace:: "Create pull request"
 
-.. _repository: https://github.com/<USERNAME>/dimcat
-.. _issue tracker: https://github.com/<USERNAME>/dimcat/issues
+.. _repository: https://github.com/DCMLab/dimcat
+.. _issue tracker: https://github.com/DCMLab/dimcat/issues
 .. <-- end -->
 
 
@@ -336,7 +289,7 @@ on PyPI_, the following steps can be used to release a new version for
 .. _GitHub's fork and pull request workflow: https://guides.github.com/activities/forking/
 .. _guide created by FreeCodeCamp: https://github.com/FreeCodeCamp/how-to-contribute-to-open-source
 .. _Miniconda: https://docs.conda.io/en/latest/miniconda.html
-.. _MyST: https://myst-parser.readthedocs.io/en/latest/syntax/syntax.html
+.. _myst-nb: https://myst-nb.readthedocs.io/en/latest/
 .. _other kinds of contributions: https://opensource.guide/how-to-contribute
 .. _pre-commit: https://pre-commit.com/
 .. _PyPI: https://pypi.org/

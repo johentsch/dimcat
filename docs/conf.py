@@ -73,7 +73,8 @@ extensions = [
     "sphinx.ext.mathjax",
     "sphinx.ext.napoleon",
     "sphinx.ext.githubpages",
-    "myst_nb"
+    "myst_nb", # rendering Jupyter notebooks
+    "jupyter_sphinx", # rendering interactive Plotly in notebooks
 ]
 # pip install myst-nb
 
@@ -96,8 +97,8 @@ source_suffix = ".rst"
 master_doc = "index"
 
 # General information about the project.
-project = "dimcat"
-copyright = "2023, Digital and Cognitive Musicology Lab @ École Polytechnique Fédérale de Lausanne"
+project = "DiMCAT"
+copyright = "2023, Johannes Hentschel @ DCML @ EPFL"
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -162,14 +163,12 @@ todo_emit_warnings = True
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-html_theme = "alabaster"
+html_theme = "pydata_sphinx_theme"
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
 html_theme_options = {
-    "sidebar_width": "300px",
-    "page_width": "1200px"
 }
 
 # Add any paths that contain custom themes here, relative to this directory.
@@ -195,6 +194,10 @@ html_theme_options = {
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ["_static"]
+
+html_css_files = [
+    'css/custom.css',
+]
 
 # If not '', a 'Last updated on:' timestamp is inserted at every page bottom,
 # using the given strftime format.
@@ -255,7 +258,7 @@ latex_elements = {
 # Grouping the document tree into LaTeX files. List of tuples
 # (source start file, target name, title, author, documentclass [howto/manual]).
 latex_documents = [
-    ("index", "user_guide.tex", "dimcat Documentation", "johentsch", "Digital and Cognitive Musicology Lab @ École Polytechnique Fédérale de Lausanne", "manual")
+    ("index", "user_guide.tex", "DiMCAT Documentation", "Johannes Hentschel", "manual")
 ]
 
 # The name of an image file (relative to this directory) to place at the top of
@@ -283,11 +286,11 @@ python_version = ".".join(map(str, sys.version_info[0:2]))
 intersphinx_mapping = {
     "sphinx": ("https://www.sphinx-doc.org/en/master", None),
     "python": ("https://docs.python.org/" + python_version, None),
-    "matplotlib": ("https://matplotlib.org", None),
+    "matplotlib": ("https://matplotlib.org/stable", None),
     "numpy": ("https://numpy.org/doc/stable", None),
     "sklearn": ("https://scikit-learn.org/stable", None),
     "pandas": ("https://pandas.pydata.org/pandas-docs/stable", None),
-    "scipy": ("https://docs.scipy.org/doc/scipy/reference", None),
+    "scipy": ("https://docs.scipy.org/doc/scipy/", None),
     "setuptools": ("https://setuptools.pypa.io/en/stable/", None),
     "pyscaffold": ("https://pyscaffold.org/en/stable", None),
 }

@@ -1,8 +1,8 @@
 ======
-dimcat
+DiMCAT
 ======
 
-This is the documentation of **dimcat**. Mostly, it hasn't been written yet.
+This is the documentation of **DiMCAT**. Mostly, it hasn't been written yet.
 
 Contents
 ========
