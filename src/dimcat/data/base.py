@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from functools import lru_cache
-from typing import Dict, Iterator, List, Optional, Self, Tuple, Type, Union
+from typing import Dict, Iterator, List, Optional, Tuple, Type, Union
 
 import pandas as pd
 from dimcat.base import Data, PipelineStep
@@ -11,23 +11,18 @@ from dimcat.data.loader import infer_data_loader
 from dimcat.dtypes import PieceID, PieceIndex, PLoader, PPiece, SomeID
 from dimcat.utils.functions import clean_index_levels
 from ms3._typing import ScoreFacet
+from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
 
 
 class Dataset(Data):
+    """The central type of object that all :obj:`PipelineSteps <.PipelineStep>` accept."""
+
     # region Initialization
 
     def __init__(self, dataset: Optional[Dataset] = None, **kwargs):
-        """
-
-        Parameters
-        ----------
-        dataset : Data
-
-        kwargs
-
-
+        """The central
 
         Args:
             dataset: Instantiate from this Dataset by copying its fields, empty fields otherwise.
@@ -68,7 +63,7 @@ class Dataset(Data):
         self.pipeline_steps = list(dataset.pipeline_steps)
 
     def _init_loaders_from_dataset(self, dataset: Dataset, **kwargs):
-        self.loaders = list(data.loaders)
+        self.loaders = list(dataset.loaders)
 
     def copy(self, **kwargs) -> Self:
         """Return a copy of the Dataset."""
