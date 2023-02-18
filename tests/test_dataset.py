@@ -8,7 +8,7 @@ def test_duplicating_dcml_loader(dataset):
     ms3_parse = dataset.loaders[0].loader
     new_loader = DcmlLoader()
     new_loader.set_loader(ms3_parse)
-    dataset.attach_loader(new_loader)
+    dataset.set_loader(new_loader)
     index_after = dataset.piece_index
     assert len(index_after) == len(index_before) * 2
     concatenated = PieceIndex(index_before.values + index_after.values)

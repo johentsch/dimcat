@@ -2,27 +2,32 @@
 from __future__ import annotations
 
 import logging
-from functools import lru_cache
+from collections import defaultdict
 from typing import Dict, Iterator, List, Optional, Tuple, Type, Union
 
-import pandas as pd
 from dimcat.base import Data, PipelineStep
 from dimcat.data.loader import infer_data_loader
-from dimcat.dtypes import PieceID, PieceIndex, PLoader, PPiece, SomeID
-from dimcat.utils.functions import clean_index_levels
-from ms3._typing import ScoreFacet
+from dimcat.dtypes import (
+    Facet,
+    FacetConfig,
+    FacetName,
+    PieceID,
+    PieceIndex,
+    PLoader,
+    PPiece,
+)
 from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
 
 
 class Dataset(Data):
-    """The central type of object that all :obj:`PipelineSteps <.PipelineStep>` accept."""
+    """The central type of object that all :obj:`PipelineSteps <.PipelineStep>` process and return a copy of."""
 
     # region Initialization
 
     def __init__(self, dataset: Optional[Dataset] = None, **kwargs):
-        """The central
+        """The central type of object that all :obj:`PipelineSteps <.PipelineStep>` process and return a copy of.
 
         Args:
             dataset: Instantiate from this Dataset by copying its fields, empty fields otherwise.
@@ -98,28 +103,27 @@ class Dataset(Data):
         """Add the Piece objects that the given loader yields to :attr:`pieces` and add their IDs to the
         :attr:`self.piece_index`.
         """
-        for PID, piece in loader.iter_pieces():
-            self._set_piece(piece_id=PID, piece_obj=piece)
+        for piece_obj in loader.iter_pieces():
+            self._set_piece(piece_obj=piece_obj)
 
-    def _set_piece(self, piece_id: PieceID, piece_obj: PPiece) -> None:
+    def _set_piece(self, piece_obj: PPiece) -> None:
         """Add a piece to the dataset.
 
         Raises:
             ValueError if ``piece_id`` is already present.
         """
-        if piece_id in self._pieces:
+        PID = piece_obj.piece_id
+        if PID in self._pieces:
+            raise ValueError(f"Dataset already contains a piece with PieceID {PID}.")
+        if PID in self.piece_index:
             raise ValueError(
-                f"Dataset already contains a piece with PieceID {piece_id}."
-            )
-        if piece_id in self.piece_index:
-            raise ValueError(
-                f"Dataset.piece_index already contains PieceID {piece_id} although it "
+                f"Dataset.piece_index already contains PieceID {PID} although it "
                 f"had not been present in .pieces"
             )
-        self._pieces[piece_id] = piece_obj
-        self.piece_index.append(piece_id)
+        self._pieces[PID] = piece_obj
+        self.piece_index.append(PID)
 
-    def attach_loader(self, loader: PLoader):
+    def set_loader(self, loader: PLoader):
         """Add an initialized loader to :attr:`loaders` and add the pieces it yields to :attr:`pieces`."""
         self.loaders.append(loader)
         self._retrieve_pieces_from_loader(loader)
@@ -149,7 +153,7 @@ class Dataset(Data):
             if loader is None:
                 _loader = infer_data_loader(d)
             loader_object = _loader(directory=d, **kwargs)
-            self.attach_loader(loader_object)
+            self.set_loader(loader_object)
 
     def reset_pieces(self):
         """Iterate through all attached loaders and"""
@@ -168,54 +172,43 @@ class Dataset(Data):
             raise KeyError(f"ID not found in .pieces: {PID}")
         return piece
 
-    def iter_pieces(self) -> Iterator[Tuple[PieceID, PPiece]]:
+    def iter_pieces(self) -> Iterator[PPiece]:
         for PID in self.piece_index:
-            yield PID, self.get_piece(PID)
+            yield self.get_piece(PID)
 
-    def get_facet(self, what: ScoreFacet) -> pd.DataFrame:
-        """Uses _.iter_facet() to collect and concatenate all DataFrames for a particular facet.
+    def iter_facet(self, facet: Union[FacetName, FacetConfig]) -> Iterator[Facet]:
+        """Iterate through :obj:`Facet` objects."""
+        for piece_obj in self.iter_pieces():
+            facet_obj = piece_obj.get_facet(facet=facet)
+            yield facet_obj
 
-        Parameters
-        ----------
-        what : {'form_labels', 'events', 'expanded', 'notes_and_rests', 'notes', 'labels',
-                'cadences', 'chords', 'measures', 'rests'}
-            What facet to retrieve.
-
-        Returns
-        -------
-        :obj:`pandas.DataFrame`
-        """
-        dfs = {idx: df for idx, df in self.iter_facet(what=what)}
-        if len(dfs) == 1:
-            return list(dfs.values())[0]
-        concatenated_groups = pd.concat(
-            dfs.values(), keys=dfs.keys(), names=self.index_levels["indices"]
-        )
-        return clean_index_levels(concatenated_groups)
-
-    @lru_cache()
-    def get_item(self, ID: PieceID, what: ScoreFacet) -> Optional[pd.DataFrame]:
-        """Retrieve a DataFrame pertaining to the facet ``what`` of the piece ``index``.
+    def get_facet(self, facet: Union[FacetName, FacetConfig]) -> Facet:
+        """Retrieve the concatenated facet for all selected pieces.
 
         Args:
-            ID: (corpus, fname) or (corpus, fname, interval)
-            what: What facet to retrieve.
+            facet:
 
         Returns:
-            DataFrame representing an entire score facet, or a chunk (slice) of it.
-        """
 
-        file, df = self._pieces[ID].get_facet(what, interval_index=True)
-        logger.debug(f"Retrieved {what} from {file}.")
-        if df is not None and not isinstance(df.index, pd.IntervalIndex):
-            logger.info(f"'{what}' of {ID} does not come with an IntervalIndex")
-            df = None
-        if df is None:
-            return
-        assert (
-            df.index.nlevels == 1
-        ), f"Retrieved DataFrame has {df.index.nlevels}, not 1"
-        return df
+        """
+        config2facet_objects: Dict[FacetConfig, Dict[PieceID, Facet]] = defaultdict(
+            dict
+        )
+        for facet_obj in self.iter_facet(facet=facet):
+            facet_config = FacetConfig.from_dataclass(facet_obj)
+            config2facet_objects[facet_config][facet_obj.piece_id] = facet_obj
+        if len(config2facet_objects) > 1:
+            raise NotImplementedError(
+                f"Currently, facets with diverging configs cannot be concatenated:\n"
+                f"{set(config2facet_objects.keys())}"
+            )
+        concatenated_per_config = []
+        for config, facet_objects in config2facet_objects.items():
+            concatenated_per_config.append(
+                config.concat_method(facet_objects, names=["corpus", "piece"])
+            )
+        result = concatenated_per_config[0]
+        return result
 
     def get_previous_pipeline_step(self, idx=0, of_type=None):
         """Retrieve one of the previously applied PipelineSteps, either by index or by type.
@@ -232,170 +225,22 @@ class Dataset(Data):
         -------
         :obj:`PipelineStep`
         """
+        pipeline_steps = reversed(self.pipeline_steps)
         if of_type is None:
-            n_previous_steps = len(self.pipeline_steps)
+            n_previous_steps = len(pipeline_steps)
             try:
-                return self.pipeline_steps[idx]
+                return pipeline_steps[idx]
             except IndexError:
                 logger.info(
                     f"Invalid index idx={idx} for list of length {n_previous_steps}"
                 )
                 raise
         try:
-            return next(
-                step for step in self.pipeline_steps if isinstance(step, of_type)
-            )
+            return next(step for step in pipeline_steps if isinstance(step, of_type))
         except StopIteration:
             raise StopIteration(
                 f"Previously applied PipelineSteps do not include any {of_type}: {self.pipeline_steps}"
             )
-
-    def iter_facet(self, what: ScoreFacet) -> Iterator[Tuple[SomeID, pd.DataFrame]]:
-        """Iterate through facet DataFrames.
-
-        Args:
-            what: Which type of facet to retrieve.
-
-        Yields:
-            Index tuple.
-            Facet DataFrame.
-        """
-        for idx, piece in self.iter_pieces():
-            _, df = piece.get_parsed(facet=what, interval_index=True)
-            if df is None or len(df.index) == 0:
-                logger.info(f"{idx} has no {what}.")
-                continue
-            yield idx, df
-
-    def set_indices(
-        self, new_indices: Union[List[SomeID], Dict[SomeID, List[SomeID]]]
-    ) -> None:
-        """Replace :attr:`indices` with a new list of IDs.
-
-        Args:
-            new_indices:
-                The new list IDs or a dictionary of several lists of IDs. The latter is useful for re-grouping
-                freshly sliced IDs of a :class:`GroupedDataset`.
-        """
-        if isinstance(new_indices, dict):
-            new_indices = sum(new_indices.values(), [])
-        self.piece_index = new_indices
-
-    def track_pipeline(
-        self,
-        pipeline_step,
-        group2pandas=None,
-        indices=None,
-        processed=None,
-        grouper=None,
-        slicer=None,
-    ):
-        """Keep track of the applied pipeline_steps and update index level names and group2pandas
-        conversion method.
-
-        Parameters
-        ----------
-        pipeline_step : :obj:`PipelineStep`
-        group2pandas : :obj:`str`, optional
-        indices : :obj:`str`, optional
-        processed : :obj:`str`, optional
-        grouper : :obj:`str`, optional
-        slicer : :obj:`str`, optional
-        """
-        self.pipeline_steps = [pipeline_step] + self.pipeline_steps
-        if processed is not None:
-            if isinstance(processed, str):
-                processed = [processed]
-            self.index_levels["processed"] = processed
-        if indices is not None:
-            if indices == "IDs":
-                # once_per_group == True
-                self.index_levels["indices"] = ["IDs"]
-            elif len(self.index_levels["indices"]) == 2:
-                self.index_levels["indices"] = self.index_levels["indices"] + [indices]
-            else:
-                self.index_levels["indices"][2] = indices
-            assert 1 <= len(self.index_levels["indices"]) < 4
-        if group2pandas is not None:
-            self.group2pandas = group2pandas
-        if grouper is not None:
-            self.index_levels["groups"] = self.index_levels["groups"] + [grouper]
-        if slicer is not None:
-            self.index_levels["slicer"] = [slicer]
-
-    def group_of_values2series(self, group_dict) -> pd.Series:
-        """Converts an {ID -> processing_result} dict into a Series."""
-        series = pd.Series(group_dict, name=self.index_levels["processed"][0])
-        series.index = self._rename_multiindex_levels(
-            series.index, self.index_levels["indices"]
-        )
-        return series
-
-    def group_of_series2series(self, group_dict) -> pd.Series:
-        """Converts an {ID -> processing_result} dict into a Series."""
-        lengths = [len(S) for S in group_dict.values()]
-        if 0 in lengths:
-            group_dict = {k: v for k, v in group_dict.items() if len(v) > 0}
-            if len(group_dict) == 0:
-                logger.info("Group contained only empty Series")
-                return pd.Series()
-            else:
-                n_empty = lengths.count(0)
-                logger.info(
-                    f"Had to remove {n_empty} empty Series before concatenation."
-                )
-        if len(group_dict) == 1 and list(group_dict.keys())[0] == "group_ids":
-            series = list(group_dict.values())[0]
-            series.index = self._rename_multiindex_levels(
-                series.index, self.index_levels["processed"]
-            )
-        else:
-            series = pd.concat(group_dict.values(), keys=group_dict.keys())
-            series.index = self._rename_multiindex_levels(
-                series.index,
-                self.index_levels["indices"] + self.index_levels["processed"],
-            )
-        return series
-
-    def group2dataframe(self, group_dict) -> pd.DataFrame:
-        """Converts an {ID -> processing_result} dict into a DataFrame."""
-        try:
-            df = pd.concat(group_dict.values(), keys=group_dict.keys())
-        except (TypeError, ValueError):
-            logger.info(group_dict)
-            raise
-        df.index = self._rename_multiindex_levels(
-            df.index, self.index_levels["indices"] + self.index_levels["processed"]
-        )
-        return df
-
-    def group2dataframe_unstacked(self, group_dict):
-        return self.group2dataframe(group_dict).unstack()
-
-    def _rename_multiindex_levels(self, multiindex: pd.MultiIndex, index_level_names):
-        """Renames the index levels based on the _.index_levels dict."""
-        try:
-            n_levels = multiindex.nlevels
-            if n_levels == 1:
-                return multiindex.rename(index_level_names[0])
-            n_names = len(index_level_names)
-            if n_names < n_levels:
-                levels = list(range(len(index_level_names)))
-                # The level parameter makes sure that, when n names are given, only the first n levels are being
-                # renamed. However, this will lead to unexpected behaviour if index levels are named by an integer
-                # that does not correspond to the position of another index level, e.g. ('level0_name', 0, 1)
-                return multiindex.rename(index_level_names, level=levels)
-            elif n_names > n_levels:
-                return multiindex.rename(index_level_names[:n_levels])
-            return multiindex.rename(index_level_names)
-        except (TypeError, ValueError) as e:
-            logger.info(
-                f"Failed to rename MultiIndex levels {multiindex.names} to {index_level_names}: '{e}'"
-            )
-            logger.info(multiindex[:10])
-            logger.info(f"self.index_levels: {self.index_levels}")
-        # TODO: This method should include a call to clean_multiindex_levels and make use of self.index_levels
-        return multiindex
 
     def __str__(self):
         return str(self.piece_index)
@@ -404,16 +249,11 @@ class Dataset(Data):
         return str(self.piece_index)
 
 
-def remove_corpus_from_ids(result):
-    """Called when group contains corpus_names and removes redundant repetition from indices."""
-    if isinstance(result, dict):
-        without_corpus = {}
-        for key, v in result.items():
-            if isinstance(key[0], str):
-                without_corpus[key[1:]] = v
-            else:
-                new_key = tuple(k[1:] for k in key)
-                without_corpus[new_key] = v
-        return without_corpus
-    logger.info(result)
-    return result.droplevel(0)
+if __name__ == "__main__":
+    from dimcat.data.loader import DcmlLoader
+
+    loader = DcmlLoader("~/corelli")
+    dataset = Dataset()
+    dataset.set_loader(loader)
+    print(dataset.piece_index)
+    print(dataset.get_facet("notes"))

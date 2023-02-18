@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import logging
-from abc import ABC
-from dataclasses import dataclass
-from enum import Enum
-from functools import cached_property
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, fields
+from enum import Enum, IntEnum, auto
+from functools import cached_property, partial
 from pathlib import Path
 from typing import (
     Any,
@@ -36,6 +36,7 @@ import numpy as np
 import pandas as pd
 from dimcat.utils import grams, transition_matrix
 from scipy.stats import entropy
+from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
 
@@ -539,10 +540,10 @@ class PieceIndex(TypedSequence[PieceID], register_for=[PieceID]):
         return hash(tuple(self.values))
 
     def __repr__(self):
-        return f"{self.name} of length ({len(self._values)}"
+        return f"{self.name} of length {len(self._values)}"
 
     def __str__(self):
-        return f"{self.name} of length ({len(self._values)}"
+        return f"{self.name} of length {len(self._values)}"
 
 
 PathLike: TypeAlias = Union[str, Path]
@@ -553,21 +554,35 @@ class PLoader(Protocol):
     def __init__(self, directory: Union[PathLike, Collection[PathLike]]):
         pass
 
-    def iter_pieces(self) -> Iterator[Tuple[PieceID, PPiece]]:
+    def iter_pieces(self) -> Iterator[PPiece]:
         ...
 
 
-class FacetName(Enum):
-    MEASURES = "measures"
-    NOTES = "notes"
-    RESTS = "rests"
-    NOTES_AND_RESTS = "notes_and_rests"
-    LABELS = "labels"
-    EXPANDED = "expanded"
-    FORM_LABELS = "form_labels"
-    CADENCES = "cadences"
-    EVENTS = "events"
-    CHORDS = "chords"
+@dataclass(frozen=True)
+class Configuration:
+    @classmethod
+    def from_dataclass(cls, config: Configuration, **kwargs) -> Self:
+        init_args: Dict[str, Any] = {}
+        for config_field in fields(cls):
+            value = getattr(config, config_field.name, None)
+            if value is None:
+                continue
+            enum_convert = get_enum_by_name(config_field.type)
+            if enum_convert:
+                init_args[config_field.name] = enum_convert(value)
+            else:
+                init_args[config_field.name] = value
+        init_args.update(kwargs)
+        return cls(**init_args)
+
+
+class DfType(str, Enum):
+    PANDAS = "pandas"
+    MODIN = "modin"
+
+
+class AnalyzerName(str, Enum):
+    PitchClassVectors = "PitchClassVectors"
 
 
 class Aspect(Enum):
@@ -584,10 +599,17 @@ class PFacet(Protocol):
         ...
 
 
-@runtime_checkable
-class PPiece(Protocol):
-    def get_facet(self, facet=FacetName, **kwargs) -> PFacet:
-        ...
+class Available(IntEnum):
+    """Expresses the availability of a requested facet for a given piece. Value 0 corresponds to never available.
+    All following values have increasingly higher values following the logic "the higher the value, the cheaper to get".
+    That enables checking for a minimal status, e.g. ``if availability > Available.BY_TRANSFORMING``.
+    """
+
+    NOT = 0
+    EXTERNALLY = auto()
+    BY_TRANSFORMING = auto()
+    BY_SLICING = auto()
+    INDIVIDUALLY = auto()
 
 
 @runtime_checkable
@@ -602,9 +624,9 @@ class TabularData(ABC):
     df: pd.DataFrame
 
     @classmethod
-    def from_df(cls, df: pd.DataFrame):
+    def from_df(cls, df: pd.DataFrame, **kwargs):
         """Subclasses can implement transformational logic."""
-        instance = cls(df=df)
+        instance = cls(df=df, **kwargs)
         return instance
 
     def get_aspect(self, key: str) -> TypedSequence:
@@ -619,9 +641,33 @@ class TabularData(ABC):
         """Enable using TabularData like a DataFrame."""
         return getattr(self.df, item)
 
+    def __len__(self) -> int:
+        return len(self.df.index)
 
-class Facet(TabularData):
-    """Classes implementing the PFacet protocol."""
+
+@dataclass(frozen=True)
+class FacetConfig(Configuration):
+    facet: FacetName
+    df_type: DfType = DfType.PANDAS
+    unfold: bool = False
+    interval_index: bool = True
+    concat_method: Callable[[Dict[PieceID, Facet], Sequence[str]], Facet] = pd.concat
+
+
+@dataclass(frozen=True)
+class FileIdentifier:
+    file_path: str
+    piece_id: PieceID
+
+
+@dataclass(frozen=True)
+class FacetIdentifier(FacetConfig, FileIdentifier):
+    pass
+
+
+@dataclass(frozen=True)
+class Facet(FacetIdentifier, TabularData):
+    """Classes structurally implementing the PFacet protocol."""
 
     def get_aspect(self, key: Union[str, Enum]) -> TypedSequence:
         """In its basic form, get one of the columns as a :obj:`TypedSequence`.
@@ -634,7 +680,10 @@ class Facet(TabularData):
     pass
 
 
+@dataclass(frozen=True)
 class Harmonies(Facet):
+    facet: FacetName = "FacetName.HARMONIES"
+
     @cached_property
     def globalkey(self) -> str:
         return self.get_aspect(key=Aspect.GLOBALKEY)[0]
@@ -649,15 +698,134 @@ class Harmonies(Facet):
         return chords.get_n_grams(2)
 
 
+@dataclass(frozen=True)
 class Measures(Facet):
+    facet: FacetName = "FacetName.MEASURES"
     pass
 
 
+@dataclass(frozen=True)
+class Rests(Facet):
+    facet: FacetName = "FacetName.RESTS"
+    pass
+
+
+@dataclass(frozen=True)
 class Notes(Facet):
+    facet: FacetName = "FacetName.NOTES"
+
     @cached_property
     def tpc(self) -> TypedSequence:
         series = self.get_aspect(Aspect.TPC)
         return TypedSequence(series)
+
+
+@dataclass(frozen=True)
+class NotesAndRests(Facet):
+    facet: FacetName = "FacetName.NOTES_AND_RESTS"
+    pass
+
+
+@dataclass(frozen=True)
+class Labels(Facet):
+    facet: FacetName = "FacetName.LABELS"
+    pass
+
+
+@dataclass(frozen=True)
+class FormLabels(Facet):
+    facet: FacetName = "FacetName.FORM_LABELS"
+    pass
+
+
+@dataclass(frozen=True)
+class Cadences(Facet):
+    facet: FacetName = "FacetName.CADENCES"
+    pass
+
+
+@dataclass(frozen=True)
+class Events(Facet):
+    facet: FacetName = "FacetName.EVENTS"
+    pass
+
+
+@dataclass(frozen=True)
+class Positions(Facet):
+    facet: FacetName = "FacetName.POSITIONS"
+    pass
+
+
+class FacetName(str, Enum):
+    """Identifies the various types of data facets and makes accessible their default configs and TabularData."""
+
+    default_config: FacetConfig
+    """Attribute of each enum member to retrieve the respective default configuration."""
+
+    def __new__(
+        cls, name: str, facet_class: Type[Facet], docstring: str = ""
+    ) -> FacetName:
+        """Add attributes to the Enum members, namely defaultdict, make_config, and from_df.
+        Credits for this solution go to
+        https://rednafi.github.io/reflections/add-additional-attributes-to-enum-members-in-python.html
+        """
+        obj = str.__new__(cls, name)
+        obj._value_ = name
+        obj.default_config = FacetConfig(facet=obj)
+        obj.make_config = partial(FacetConfig, facet=obj)
+        obj.from_df = facet_class.from_df
+        obj.__doc__ = docstring
+        return obj
+
+    @classmethod
+    def make_tuple(cls, facets: Iterable[Union[FacetName, str]]) -> Tuple[FacetName]:
+        return tuple(cls(c) for c in facets)
+
+    MEASURES = "measures", Measures, "Measure map."
+    NOTES = "notes", Notes, "Note table"
+    RESTS = "rests", Rests
+    NOTES_AND_RESTS = "notes_and_rests", NotesAndRests
+    LABELS = "labels", Labels
+    HARMONIES = (
+        "harmonies",
+        Harmonies,
+        "Harmony annotations divided into feature columns.",
+    )
+    FORM_LABELS = "form_labels", FormLabels
+    CADENCES = "cadences", Cadences
+    EVENTS = (
+        "events",
+        Events,
+        "One large table representing all available events in their raw form.",
+    )
+    POSITIONS = (
+        "positions",
+        Positions,
+        "All positions which have a note or some markup attached, and markup such as "
+        "dynamics, articulation, fermatas, lyrics, bass figures, pedaling, etc.",
+    )
+
+
+@runtime_checkable
+class PPiece(Protocol):
+    piece_id: PieceID
+
+    @abstractmethod
+    def get_available_facets(self) -> Dict[FacetName, Available]:
+        ...
+
+    @abstractmethod
+    def get_facet(self, facet=Union[FacetName, FacetConfig]) -> PFacet:
+        ...
+
+    @abstractmethod
+    def is_facet_available(self, facet: FacetConfig) -> Available:
+        ...
+
+
+def get_enum_by_name(name: str) -> Optional[Type[Enum]]:
+    name2enum = {"FacetName": FacetName}
+    return name2enum.get(name)
 
 
 if __name__ == "__main__":
