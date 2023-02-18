@@ -78,13 +78,15 @@ class DcmlPiece(PPiece):
                 unfold=config.unfold,
                 interval_index=config.interval_index,
             )
-            facet_config_args = asdict(config)
+            facet_config_args = {
+                k: v for k, v in asdict(config).items() if k != "facet"
+            }
             file_identifier_args = {
                 "piece_id": self.piece_id,
                 "file_path": file.full_path,
             }
             facet = FacetName(config.facet).from_df(
-                facet_df, **file_identifier_args, **facet_config_args
+                df=facet_df, **file_identifier_args, **facet_config_args
             )
             return facet
 

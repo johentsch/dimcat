@@ -242,11 +242,17 @@ class Dataset(Data):
                 f"Previously applied PipelineSteps do not include any {of_type}: {self.pipeline_steps}"
             )
 
+    # endregion Data access
+
+    # region Dunder methods
+
     def __str__(self):
         return str(self.piece_index)
 
     def __repr__(self):
         return str(self.piece_index)
+
+    # endregion Dunder methods
 
 
 if __name__ == "__main__":
