@@ -7,16 +7,10 @@ from typing import Dict, Iterator, List, Optional, Tuple, Type, Union
 
 from dimcat.base import Data, PipelineStep
 from dimcat.data.loader import infer_data_loader
-from dimcat.dtypes import (
-    Facet,
-    FacetConfig,
-    FacetName,
-    PieceID,
-    PieceIndex,
-    PLoader,
-    PPiece,
-)
+from dimcat.dtypes import PieceID, PieceIndex, PLoader, PPiece
 from typing_extensions import Self
+
+from .facet import Facet, FacetConfig, FacetName
 
 logger = logging.getLogger(__name__)
 

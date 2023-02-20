@@ -2,18 +2,9 @@ from dataclasses import asdict, dataclass
 from typing import Collection, Dict, Iterator, Optional, Tuple, Type, Union
 
 import ms3
-from dimcat.dtypes import (
-    Available,
-    Configuration,
-    Facet,
-    FacetConfig,
-    FacetName,
-    PathLike,
-    PieceID,
-    PLoader,
-    PNotesTable,
-    PPiece,
-)
+from dimcat.dtypes import Configuration, PathLike, PieceID, PLoader, PNotesTable, PPiece
+
+from .facet import Available, Facet, FacetConfig, FacetName
 
 
 @dataclass

@@ -16,7 +16,7 @@ from typing import (
 from .base import PathLike, PieceID, TabularData, TypedSequence
 
 if TYPE_CHECKING:
-    from .facet import Available, FacetConfig, FacetName
+    from dimcat.data.facet import Available, FacetConfig, FacetName
 
 
 @runtime_checkable

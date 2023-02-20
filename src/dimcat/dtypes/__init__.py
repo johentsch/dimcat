@@ -10,16 +10,4 @@ from .base import (
     TabularData,
     TypedSequence,
 )
-from .facet import (
-    Aspect,
-    Available,
-    DfType,
-    Facet,
-    FacetConfig,
-    FacetIdentifier,
-    FacetName,
-    Harmonies,
-    Measures,
-    Rests,
-)
 from .sequence import Bigrams, Ngrams, PieceIndex
