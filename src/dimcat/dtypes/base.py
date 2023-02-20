@@ -376,22 +376,23 @@ class TypedSequence(Sequence[T_co]):
         return f"{self.name}({self.values})"
 
 
-class DfType(str, Enum):
+class DataBackend(str, Enum):
     PANDAS = "pandas"
     MODIN = "modin"
 
 
-Dataframe: TypeAlias = Union[pd.DataFrame, mpd.DataFrame]
+DataframeType: TypeAlias = Union[pd.DataFrame, mpd.DataFrame]
+SeriesType: TypeAlias = Union[pd.Series, mpd.Series]
 
 
 @dataclass(frozen=True)
 class TabularData(ABC):
     """Wrapper around a :obj:`pandas.DataFrame`."""
 
-    df: Dataframe
+    df: DataframeType
 
     @classmethod
-    def from_df(cls, df: pd.DataFrame, **kwargs):
+    def from_df(cls, df: DataframeType, **kwargs):
         """Subclasses can implement transformational logic."""
         instance = cls(df=df, **kwargs)
         return instance
@@ -417,15 +418,17 @@ class Configuration(Data):
     @classmethod
     def from_dataclass(cls, config: Configuration, **kwargs) -> Self:
         """This class methods copies the fields it needs from another config-like dataclass."""
+        init_args = cls.dict_from_dataclass(config, **kwargs)
+        return cls(**init_args)
+
+    @classmethod
+    def dict_from_dataclass(cls, config: Configuration, **kwargs) -> Dict:
+        """This class methods copies the fields it needs from another config-like dataclass."""
         init_args: Dict[str, Any] = {}
         for config_field in fields(cls):
             value = getattr(config, config_field.name, None)
             if value is None:
                 continue
-            # enum_convert = _get_enum_constructor_by_name(config_field.type)
-            # if enum_convert:
-            #     init_args[config_field.name] = enum_convert(value)
-            # else:
             init_args[config_field.name] = value
         init_args.update(kwargs)
-        return cls(**init_args)
+        return init_args

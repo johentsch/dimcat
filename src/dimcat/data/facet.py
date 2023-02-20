@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import asdict, dataclass
 from enum import Enum, IntEnum, auto
-from functools import cached_property, lru_cache
-from typing import Callable, Dict, Iterable, Optional, Sequence, Tuple, Type, Union
+from functools import cached_property
+from typing import Callable, Dict, Iterable, Optional, Sequence, Tuple, Union
 
 import pandas as pd
 from dimcat.dtypes.base import (
     Configuration,
-    Dataframe,
-    DfType,
+    DataBackend,
+    DataframeType,
     PieceID,
+    SeriesType,
     TabularData,
     TypedSequence,
 )
@@ -18,33 +20,7 @@ from dimcat.dtypes.sequence import Bigrams, ContiguousSequence
 from dimcat.utils.decorators import config_dataclass
 from typing_extensions import Self
 
-# region Helpers
-
-
-@lru_cache()
-def _get_enum_constructor_by_name(name: str) -> Type[Enum]:
-    """Allow dataclasses to use the Enums defined underneath them."""
-    return globals()[name]
-
-
-@lru_cache()
-def _get_enum_member(name: str, value: str) -> Enum:
-    """Allow dataclasses to use the Enums defined underneath them."""
-    constructor = _get_enum_constructor_by_name(name)
-    if constructor is None:
-        raise KeyError(f"Can't find Enum of name '{name}'.")
-    return constructor(value)
-
-
-@lru_cache()
-def _get_facet_constructor_by_name(name: str) -> Type[Facet]:
-    """Allow dataclasses to use the Enums defined underneath them."""
-    return globals()[name]
-
-
-# endregion Helpers
-
-
+logger = logging.getLogger(__name__)
 # region Enums and Configs
 
 
@@ -86,35 +62,35 @@ class Available(IntEnum):
     INDIVIDUALLY = auto()
 
 
-@config_dataclass(dtype=FacetName)
+@dataclass(frozen=True)
 class FacetConfig(Configuration):
     dtype: FacetName
-    df_type: DfType
+    df_type: DataBackend
     unfold: bool
     interval_index: bool
     concat_method: Callable[[Dict[PieceID, Facet], Sequence[str]], Facet]
 
 
-@config_dataclass(dtype=FacetName, df_type=DfType)
+@dataclass(frozen=True)
 class DefaultFacetConfig(FacetConfig):
     """Configuration for any facet."""
 
     dtype: FacetName
-    df_type: DfType = DfType.PANDAS
+    df_type: DataBackend = DataBackend.PANDAS
     unfold: bool = False
     interval_index: bool = True
     concat_method: Callable[[Dict[PieceID, Facet], Sequence[str]], Facet] = pd.concat
 
 
 @dataclass(frozen=True)
-class FacetIdentifiers:
+class FacetIdentifiers(Configuration):
     """Fields serving to identify the facet of one particular piece."""
 
     piece_id: PieceID
     file_path: str
 
 
-@config_dataclass(dtype=FacetName, df_type=DfType)
+@config_dataclass(dtype=FacetName, df_type=DataBackend)
 class FacetID(FacetConfig, FacetIdentifiers):
     """Config + Identifier"""
 
@@ -123,25 +99,69 @@ class FacetID(FacetConfig, FacetIdentifiers):
 
 # endregion Enums and Configs
 
-# region facet tables
+# region Facet types
 
 
-@config_dataclass(dtype=FacetName, df_type=DfType)
-class Facet(TabularData, FacetConfig, FacetIdentifiers):
+@config_dataclass(dtype=FacetName, df_type=DataBackend)
+class Facet(TabularData, FacetID):
     """Classes structurally implementing the PFacet protocol."""
 
     def get_aspect(self, key: Union[str, Enum]) -> ContiguousSequence:
         """In its basic form, get one of the columns as a :obj:`TypedSequence`.
         Subclasses may offer additional aspects, such as transformed columns or subsets of the table.
         """
-        series: pd.Series = self.df[key]
+        series: SeriesType = self.df[key]
         sequential_data = ContiguousSequence(series)
         return sequential_data
 
     @classmethod
     @property
     def dtype(cls) -> FacetName:
+        """Name of the class as enum member."""
         return FacetName(cls.name)
+
+    @classmethod
+    def from_config(
+        cls,
+        df: DataframeType,
+        config: FacetConfig,
+        identifiers: Optional[FacetIdentifiers] = None,
+        **kwargs,
+    ) -> Self:
+        """Create a Facet from a dataframe and a :obj:`FacetConfig`. The required identifiers can be given either
+        as :obj:`FacetIdentifiers`, or as keyword arguments. In addition, keyword arguments can be used to override
+        values in the given configuration.
+        """
+        cfg_kwargs = FacetConfig.dict_from_dataclass(config)
+        if identifiers is not None:
+            id_kwargs = FacetIdentifiers.dict_from_dataclass(identifiers)
+            cfg_kwargs.update(id_kwargs)
+        cfg_kwargs.update(kwargs)
+        if cfg_kwargs["dtype"] != cls.dtype:
+            cfg_class = config.__class__.__name__
+            raise TypeError(
+                f"Cannot initiate {cls.name} with {cfg_class}.dtype={config.dtype}."
+            )
+        return cls(df=df, **cfg_kwargs)
+
+    @classmethod
+    def from_df(
+        cls,
+        df: DataframeType,
+        identifiers: Optional[FacetIdentifiers] = None,
+        **kwargs,
+    ) -> Self:
+        """Create a Facet from a dataframe and a :obj:`FacetConfig`. The required identifiers can be given either
+        as :obj:`FacetIdentifiers`, or as keyword arguments. In addition, keyword arguments can be used to override
+        values in the given configuration.
+        """
+        config = cls.get_default_config()
+        return cls.from_config(df=df, config=config, identifiers=identifiers, **kwargs)
+
+    @classmethod
+    def from_id(cls, df: DataframeType, facet_id: FacetID):
+        kwargs = asdict(FacetID.from_dataclass(facet_id))
+        return cls(df=df, **kwargs)
 
     @classmethod
     def get_default_config(cls) -> DefaultFacetConfig:
@@ -150,33 +170,7 @@ class Facet(TabularData, FacetConfig, FacetIdentifiers):
     def get_identifier(self) -> FacetID:
         return FacetID(self)
 
-    @classmethod
-    def from_config(
-        cls,
-        df: Dataframe,
-        config: FacetConfig,
-        identifiers: Optional[FacetIdentifiers] = None,
-        **kwargs,
-    ) -> Self:
-        if config.dtype != cls.name:
-            cfg_class = config.__class__.__name__
-            raise TypeError(
-                f"Cannot initiate {cls.name} with {cfg_class}.dtype={config.dtype}."
-            )
-        cfg_kwargs = asdict(config)
-        if identifiers is not None:
-            cfg_kwargs.update(asdict(identifiers))
-        cfg_kwargs.update(kwargs)
-        cfg_kwargs["df"] = df
-        return cls(**cfg_kwargs)
 
-    @classmethod
-    def from_id(cls, df: Dataframe, facet_id: FacetID):
-        kwargs = asdict(facet_id)
-        return cls(df=df, **kwargs)
-
-
-@dataclass(frozen=True)
 class Cadences(Facet):
     pass
 
@@ -240,7 +234,7 @@ class Rests(Facet):
     pass
 
 
-# endregion facet tables
+# endregion Facet types
 
 
 if __name__ == "__main__":
@@ -252,26 +246,26 @@ if __name__ == "__main__":
     harmonies1 = Harmonies(
         dtype="Harmonies",
         df=df,
-        df_type=DfType.PANDAS,
+        df_type=DataBackend.PANDAS,
         unfold=False,
-        interval_index=False,
+        interval_index=True,
         concat_method=pd.concat,
         piece_id=PieceID("corelli", "op01n01a"),
         file_path=file_path,
     )
-    f_cfg = FacetConfig(
-        dtype="Harmonies",
-        df_type=DfType.PANDAS,
-        unfold=False,
-        interval_index=False,
-        concat_method=pd.concat,
-    )
-    f_id = FacetIdentifiers(
+    f_cfg = Harmonies.get_default_config()
+    id_dict = dict(
         piece_id=PieceID("corelli", "op01n01a"),
         file_path=file_path,
     )
+    f_id = FacetIdentifiers(**id_dict)
     harmonies2 = Harmonies.from_config(df=df, config=f_cfg, identifiers=f_id)
     assert harmonies1 == harmonies2
+    harmonies3 = Harmonies.from_id(df, facet_id=harmonies2)
+    assert harmonies2 == harmonies3
+    harmonies4 = Harmonies.from_df(df=df, **id_dict)
+    harmonies3 == harmonies4
     print(
         f"Modulations in the globalkey {harmonies2.globalkey}: {harmonies2.get_localkey_bigrams()}"
     )
+    # c = Cadences()
