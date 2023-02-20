@@ -17,9 +17,10 @@ class Data(ABC):
     def __init__(self, **kwargs):
         pass
 
+    @classmethod
     @property
-    def name(self) -> str:
-        return self.__class__.__name__
+    def name(cls) -> str:
+        return cls.__name__
 
     def __init_subclass__(cls, **kwargs):
         """Registers every subclass under the class variable :attr:`_registry`"""
@@ -48,9 +49,10 @@ class PipelineStep(ABC):
         super().__init_subclass__(**kwargs)
         cls._registry[cls.__name__] = cls
 
+    @classmethod
     @property
-    def name(self) -> str:
-        return self.__class__.__name__
+    def name(cls) -> str:
+        return cls.__name__
 
     def check(self, _) -> Tuple[bool, str]:
         """Test piece of data for certain properties before computing analysis.
