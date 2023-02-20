@@ -13,16 +13,16 @@ class DcmlPiece(PPiece):
     source_object: ms3.Piece
     extractable_facets: Tuple[FacetName] = FacetName.make_tuple(
         (
-            "measures",
-            "notes",
-            "rests",
-            "notes_and_rests",
-            "labels",
-            "harmonies",
-            "form_labels",
-            "cadences",
-            "events",
-            "positions",
+            "Measures",
+            "Notes",
+            "Rests",
+            "NotesAndRests",
+            "Labels",
+            "Harmonies",
+            "FormLabels",
+            "Cadences",
+            "Events",
+            "Positions",
         )
     )
 

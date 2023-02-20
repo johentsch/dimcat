@@ -26,8 +26,10 @@ from typing import (
     overload,
 )
 
+import modin.pandas as mpd
 import numpy as np
 import pandas as pd
+from dimcat.base import Data
 from scipy.stats import entropy
 from typing_extensions import Self
 
@@ -374,11 +376,19 @@ class TypedSequence(Sequence[T_co]):
         return f"{self.name}({self.values})"
 
 
+class DfType(str, Enum):
+    PANDAS = "pandas"
+    MODIN = "modin"
+
+
+Dataframe: TypeAlias = Union[pd.DataFrame, mpd.DataFrame]
+
+
 @dataclass(frozen=True)
 class TabularData(ABC):
     """Wrapper around a :obj:`pandas.DataFrame`."""
 
-    df: pd.DataFrame
+    df: Dataframe
 
     @classmethod
     def from_df(cls, df: pd.DataFrame, **kwargs):
@@ -403,7 +413,7 @@ class TabularData(ABC):
 
 
 @dataclass(frozen=True)
-class Configuration:
+class Configuration(Data):
     @classmethod
     def from_dataclass(cls, config: Configuration, **kwargs) -> Self:
         """This class methods copies the fields it needs from another config-like dataclass."""

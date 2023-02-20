@@ -1,13 +1,22 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass
 from enum import Enum, IntEnum, auto
-from functools import cached_property, lru_cache, partial
-from typing import Callable, Dict, Iterable, Sequence, Tuple, Type, Union
+from functools import cached_property, lru_cache
+from typing import Callable, Dict, Iterable, Optional, Sequence, Tuple, Type, Union
 
 import pandas as pd
-from dimcat.dtypes.base import Configuration, PieceID, TabularData, TypedSequence
+from dimcat.dtypes.base import (
+    Configuration,
+    Dataframe,
+    DfType,
+    PieceID,
+    TabularData,
+    TypedSequence,
+)
 from dimcat.dtypes.sequence import Bigrams, ContiguousSequence
+from dimcat.utils.decorators import config_dataclass
+from typing_extensions import Self
 
 # region Helpers
 
@@ -39,6 +48,25 @@ def _get_facet_constructor_by_name(name: str) -> Type[Facet]:
 # region Enums and Configs
 
 
+class FacetName(str, Enum):
+    """Identifies the various types of data facets and makes accessible their default configs and TabularData."""
+
+    @classmethod
+    def make_tuple(cls, facets: Iterable[Union[FacetName, str]]) -> Tuple[FacetName]:
+        return tuple(cls(c) for c in facets)
+
+    Measures = "Measures"
+    Notes = "Notes"
+    Rests = "Rests"
+    NotesAndRests = "NotesAndRests"
+    Labels = "Labels"
+    Harmonies = "Harmonies"
+    FormLabels = "FormLabels"
+    Cadences = "Cadences"
+    Events = "Events"
+    Positions = "Positions"
+
+
 class Aspect(str, Enum):
     GLOBALKEY = "globalkey"
     LOCALKEY = "localkey"
@@ -58,23 +86,20 @@ class Available(IntEnum):
     INDIVIDUALLY = auto()
 
 
-class DfType(str, Enum):
-    PANDAS = "pandas"
-    MODIN = "modin"
-
-
-@dataclass(frozen=True)
+@config_dataclass(dtype=FacetName)
 class FacetConfig(Configuration):
-    facet: FacetName
+    dtype: FacetName
     df_type: DfType
     unfold: bool
     interval_index: bool
     concat_method: Callable[[Dict[PieceID, Facet], Sequence[str]], Facet]
 
 
-@dataclass(frozen=True)
+@config_dataclass(dtype=FacetName, df_type=DfType)
 class DefaultFacetConfig(FacetConfig):
-    facet: FacetName
+    """Configuration for any facet."""
+
+    dtype: FacetName
     df_type: DfType = DfType.PANDAS
     unfold: bool = False
     interval_index: bool = True
@@ -82,21 +107,27 @@ class DefaultFacetConfig(FacetConfig):
 
 
 @dataclass(frozen=True)
-class FacetIdentifier(FacetConfig):
+class FacetIdentifiers:
+    """Fields serving to identify the facet of one particular piece."""
+
     piece_id: PieceID
     file_path: str
 
 
-FacetNamePromise = partial(_get_enum_member, "FacetName")
-CadencePromise = partial(FacetNamePromise, "cadence")
+@config_dataclass(dtype=FacetName, df_type=DfType)
+class FacetID(FacetConfig, FacetIdentifiers):
+    """Config + Identifier"""
+
+    pass
+
 
 # endregion Enums and Configs
 
 # region facet tables
 
 
-@dataclass(frozen=True)
-class Facet(FacetIdentifier, TabularData):
+@config_dataclass(dtype=FacetName, df_type=DfType)
+class Facet(TabularData, FacetConfig, FacetIdentifiers):
     """Classes structurally implementing the PFacet protocol."""
 
     def get_aspect(self, key: Union[str, Enum]) -> ContiguousSequence:
@@ -107,31 +138,61 @@ class Facet(FacetIdentifier, TabularData):
         sequential_data = ContiguousSequence(series)
         return sequential_data
 
-    pass
+    @classmethod
+    @property
+    def dtype(cls) -> FacetName:
+        return FacetName(cls.name)
+
+    @classmethod
+    def get_default_config(cls) -> DefaultFacetConfig:
+        return DefaultFacetConfig(dtype=cls.dtype)
+
+    def get_identifier(self) -> FacetID:
+        return FacetID(self)
+
+    @classmethod
+    def from_config(
+        cls,
+        df: Dataframe,
+        config: FacetConfig,
+        identifiers: Optional[FacetIdentifiers] = None,
+        **kwargs,
+    ) -> Self:
+        if config.dtype != cls.name:
+            cfg_class = config.__class__.__name__
+            raise TypeError(
+                f"Cannot initiate {cls.name} with {cfg_class}.dtype={config.dtype}."
+            )
+        cfg_kwargs = asdict(config)
+        if identifiers is not None:
+            cfg_kwargs.update(asdict(identifiers))
+        cfg_kwargs.update(kwargs)
+        cfg_kwargs["df"] = df
+        return cls(**cfg_kwargs)
+
+    @classmethod
+    def from_id(cls, df: Dataframe, facet_id: FacetID):
+        kwargs = asdict(facet_id)
+        return cls(df=df, **kwargs)
 
 
 @dataclass(frozen=True)
 class Cadences(Facet):
-    facet: FacetName = field(init=False, default=CadencePromise)
     pass
 
 
 @dataclass(frozen=True)
 class Events(Facet):
-    facet: FacetName = field(init=False, default=CadencePromise)
     pass
 
 
 @dataclass(frozen=True)
 class FormLabels(Facet):
-    facet: FacetName = field(init=False, default=CadencePromise)
     pass
 
 
 @dataclass(frozen=True)
 class Harmonies(Facet):
-    facet: FacetName = field(init=False, default=CadencePromise)
-
     @cached_property
     def globalkey(self) -> str:
         return self.get_aspect(key=Aspect.GLOBALKEY)[0]
@@ -148,20 +209,16 @@ class Harmonies(Facet):
 
 @dataclass(frozen=True)
 class Labels(Facet):
-    facet: FacetName = field(init=False, default=CadencePromise)
     pass
 
 
 @dataclass(frozen=True)
 class Measures(Facet):
-    facet: FacetName = field(init=False, default=CadencePromise)
     pass
 
 
 @dataclass(frozen=True)
 class Notes(Facet):
-    facet: FacetName = field(init=False, default=CadencePromise)
-
     @cached_property
     def tpc(self) -> TypedSequence:
         series = self.get_aspect(Aspect.TPC)
@@ -170,81 +227,31 @@ class Notes(Facet):
 
 @dataclass(frozen=True)
 class NotesAndRests(Facet):
-    facet: FacetName = field(init=False, default=CadencePromise)
     pass
 
 
 @dataclass(frozen=True)
 class Positions(Facet):
-    facet: FacetName = field(init=False, default=CadencePromise)
     pass
 
 
 @dataclass(frozen=True)
 class Rests(Facet):
-    facet: FacetName = field(init=False, default=CadencePromise)
     pass
 
 
 # endregion facet tables
 
 
-class FacetName(str, Enum):
-    """Identifies the various types of data facets and makes accessible their default configs and TabularData."""
-
-    default_config: FacetConfig
-    """Attribute of each enum member to retrieve the respective default configuration."""
-
-    def __new__(cls, name: str, class_name: str, docstring: str = "") -> FacetName:
-        """Add attributes to the Enum members, namely defaultdict, make_config, and from_df.
-        Credits for this solution go to
-        https://rednafi.github.io/reflections/add-additional-attributes-to-enum-members-in-python.html
-        """
-        obj = str.__new__(cls, name)
-        obj._value_ = name
-        obj.default_config = DefaultFacetConfig(facet=obj)
-        obj.make_config = partial(FacetConfig, facet=obj)
-        facet_class = _get_facet_constructor_by_name(class_name)
-        obj.from_df = facet_class.from_df
-        obj.__doc__ = docstring
-        return obj
-
-    @classmethod
-    def make_tuple(cls, facets: Iterable[Union[FacetName, str]]) -> Tuple[FacetName]:
-        return tuple(cls(c) for c in facets)
-
-    # NAME = ("value", "FacetClass", "docstring")
-    MEASURES = "measures", "Measures", "Measure map."
-    NOTES = "notes", "Notes", "Note table"
-    RESTS = "rests", "Rests"
-    NOTES_AND_RESTS = "notes_and_rests", "NotesAndRests"
-    LABELS = "labels", "Labels"
-    HARMONIES = (
-        "harmonies",
-        "Harmonies",
-        "Harmony annotations divided into feature columns.",
-    )
-    FORM_LABELS = "form_labels", "FormLabels"
-    CADENCES = "cadences", "Cadences"
-    EVENTS = (
-        "events",
-        "Events",
-        "One large table representing all available events in their raw form.",
-    )
-    POSITIONS = (
-        "positions",
-        "Positions",
-        "All positions which have a note or some markup attached, and markup such as "
-        "dynamics, articulation, fermatas, lyrics, bass figures, pedaling, etc.",
-    )
-
-
 if __name__ == "__main__":
+    print(DefaultFacetConfig(dtype="Notes"))
     import ms3
 
     file_path = "~/corelli/harmonies/op01n01a.tsv"
-    harmonies = Harmonies(
-        df=ms3.load_tsv(file_path),
+    df = ms3.load_tsv(file_path)
+    harmonies1 = Harmonies(
+        dtype="Harmonies",
+        df=df,
         df_type=DfType.PANDAS,
         unfold=False,
         interval_index=False,
@@ -252,6 +259,19 @@ if __name__ == "__main__":
         piece_id=PieceID("corelli", "op01n01a"),
         file_path=file_path,
     )
+    f_cfg = FacetConfig(
+        dtype="Harmonies",
+        df_type=DfType.PANDAS,
+        unfold=False,
+        interval_index=False,
+        concat_method=pd.concat,
+    )
+    f_id = FacetIdentifiers(
+        piece_id=PieceID("corelli", "op01n01a"),
+        file_path=file_path,
+    )
+    harmonies2 = Harmonies.from_config(df=df, config=f_cfg, identifiers=f_id)
+    assert harmonies1 == harmonies2
     print(
-        f"Modulations in the globalkey {harmonies.globalkey}: {harmonies.get_localkey_bigrams()}"
+        f"Modulations in the globalkey {harmonies2.globalkey}: {harmonies2.get_localkey_bigrams()}"
     )
