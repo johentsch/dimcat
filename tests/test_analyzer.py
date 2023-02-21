@@ -19,8 +19,8 @@ def assert_pipeline_dependency_raise(analyzer_obj, data):
     """
     analyzer_class = analyzer_obj.__class__
     analyzer_name = analyzer_class.__name__
-    if len(analyzer_class.assert_steps) > 0:
-        assert_steps = typestrings2types(analyzer_class.assert_steps)
+    if len(analyzer_class.assert_all) > 0:
+        assert_steps = typestrings2types(analyzer_class.assert_all)
         for step in assert_steps:
             if not any(
                 isinstance(previous_step, step) for previous_step in data.pipeline_steps

@@ -256,7 +256,7 @@ class ChordSymbolBigrams(ChordSymbolAnalyzer):
     ordered by descending frequency.
     """
 
-    assert_steps = ["LocalKeySlicer"]
+    assert_all = ["LocalKeySlicer"]
 
     def __init__(self, dropna=True, **kwargs):
         """Analyzer that returns the bigram counts for all valid chord transitions within a group,

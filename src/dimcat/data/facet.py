@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from enum import Enum, IntEnum, auto
 from functools import cached_property
 from typing import (
@@ -21,9 +21,9 @@ import pandas as pd
 from dimcat.dtypes.base import (
     Configuration,
     DataBackend,
-    DataframeType,
     PieceID,
-    SeriesType,
+    SomeDataframe,
+    SomeSeries,
     TabularData,
     TypedSequence,
 )
@@ -139,9 +139,17 @@ class Facet(TabularData, FacetID):
         """In its basic form, get one of the columns as a :obj:`TypedSequence`.
         Subclasses may offer additional aspects, such as transformed columns or subsets of the table.
         """
-        series: SeriesType = self.df[key]
+        series: SomeSeries = self.df[key]
         sequential_data = ContiguousSequence(series)
         return sequential_data
+
+    @property
+    def config(self) -> FacetConfig:
+        return FacetConfig.from_dataclass(self)
+
+    @property
+    def identifier(self) -> FacetID:
+        return FacetID.from_dataclass(self)
 
     @classmethod
     @property
@@ -152,7 +160,7 @@ class Facet(TabularData, FacetID):
     @classmethod
     def from_config(
         cls,
-        df: DataframeType,
+        df: SomeDataframe,
         config: FacetConfig,
         identifiers: Optional[FacetIdentifiers] = None,
         **kwargs,
@@ -176,7 +184,7 @@ class Facet(TabularData, FacetID):
     @classmethod
     def from_df(
         cls,
-        df: DataframeType,
+        df: SomeDataframe,
         identifiers: Optional[FacetIdentifiers] = None,
         **kwargs,
     ) -> Self:
@@ -188,16 +196,13 @@ class Facet(TabularData, FacetID):
         return cls.from_config(df=df, config=config, identifiers=identifiers, **kwargs)
 
     @classmethod
-    def from_id(cls, df: DataframeType, facet_id: FacetID):
-        kwargs = asdict(FacetID.from_dataclass(facet_id))
+    def from_id(cls, df: SomeDataframe, facet_id: FacetID):
+        kwargs = FacetID.dict_from_dataclass(facet_id)
         return cls(df=df, **kwargs)
 
     @classmethod
     def get_default_config(cls) -> DefaultFacetConfig:
         return DefaultFacetConfig(dtype=cls.dtype)
-
-    def get_identifier(self) -> FacetID:
-        return FacetID(self)
 
 
 @dataclass(frozen=True)

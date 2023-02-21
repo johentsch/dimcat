@@ -6,12 +6,11 @@ from collections import defaultdict
 from typing import Dict, Iterator, List, Optional, Tuple, Type, Union
 
 from dimcat.base import Data, PipelineStep
+from dimcat.data.facet import Facet, FacetConfig, FacetName
 from dimcat.data.loader import PLoader, infer_data_loader
 from dimcat.data.piece import PPiece
 from dimcat.dtypes import PieceID, PieceIndex
 from typing_extensions import Self
-
-from .facet import Facet, FacetConfig, FacetName
 
 logger = logging.getLogger(__name__)
 
@@ -21,14 +20,14 @@ class Dataset(Data):
 
     # region Initialization
 
-    def __init__(self, dataset: Optional[Dataset] = None, **kwargs):
+    def __init__(self, data: Optional[Dataset] = None, **kwargs):
         """The central type of object that all :obj:`PipelineSteps <.PipelineStep>` process and return a copy of.
 
         Args:
-            dataset: Instantiate from this Dataset by copying its fields, empty fields otherwise.
+            data: Instantiate from this Dataset by copying its fields, empty fields otherwise.
             **kwargs: Dataset is cooperative and calls super().__init__(data=dataset, **kwargs)
         """
-        super().__init__(data=dataset, **kwargs)
+        super().__init__(data=data, **kwargs)
 
         self.loaders: List[PLoader] = []
         """Stores the various loaders which, together, are responsible the original,
@@ -46,12 +45,12 @@ class Dataset(Data):
         self.pipeline_steps: List[PipelineStep] = []
         """The sequence of applied PipelineSteps that has led to the current state."""
 
-        if dataset is not None:
+        if data is not None:
             # If subclasses have a different logic of copying fields, they can override these methods
-            self._init_piece_index_from_dataset(dataset, **kwargs)
-            self._init_pieces_from_dataset(dataset, **kwargs)
-            self._init_pipeline_steps_from_dataset(dataset, **kwargs)
-            self._init_loaders_from_dataset(dataset, **kwargs)
+            self._init_piece_index_from_dataset(data, **kwargs)
+            self._init_pieces_from_dataset(data, **kwargs)
+            self._init_pipeline_steps_from_dataset(data, **kwargs)
+            self._init_loaders_from_dataset(data, **kwargs)
 
     def _init_piece_index_from_dataset(self, dataset: Dataset, **kwargs):
         self.piece_index = PieceIndex(dataset.piece_index)
@@ -220,7 +219,7 @@ class Dataset(Data):
         -------
         :obj:`PipelineStep`
         """
-        pipeline_steps = reversed(self.pipeline_steps)
+        pipeline_steps = list(reversed(self.pipeline_steps))
         if of_type is None:
             n_previous_steps = len(pipeline_steps)
             try:
@@ -257,4 +256,4 @@ if __name__ == "__main__":
     dataset = Dataset()
     dataset.set_loader(loader)
     print(dataset.piece_index)
-    print(dataset.get_facet("notes"))
+    print(dataset.get_facet("Notes"))

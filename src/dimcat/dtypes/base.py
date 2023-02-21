@@ -381,18 +381,18 @@ class DataBackend(str, Enum):
     MODIN = "modin"
 
 
-DataframeType: TypeAlias = Union[pd.DataFrame, mpd.DataFrame]
-SeriesType: TypeAlias = Union[pd.Series, mpd.Series]
+SomeDataframe: TypeAlias = Union[pd.DataFrame, mpd.DataFrame]
+SomeSeries: TypeAlias = Union[pd.Series, mpd.Series]
 
 
 @dataclass(frozen=True)
 class TabularData(ABC):
     """Wrapper around a :obj:`pandas.DataFrame`."""
 
-    df: DataframeType
+    df: SomeDataframe
 
     @classmethod
-    def from_df(cls, df: DataframeType, **kwargs):
+    def from_df(cls, df: SomeDataframe, **kwargs):
         """Subclasses can implement transformational logic."""
         instance = cls(df=df, **kwargs)
         return instance

@@ -9,7 +9,7 @@ from dimcat.dtypes import SomeID
 class SliceInfoAnalyzer(Analyzer):
     """"""
 
-    assert_steps = ["Slicer"]
+    assert_all = ["Slicer"]
 
     def check(self, df):
         if len(df) == 0:
@@ -25,7 +25,7 @@ class SliceInfoAnalyzer(Analyzer):
 class GroupedSliceInfoAnalyzer(SliceInfoAnalyzer):
     """"""
 
-    assert_steps = ["Slicer", "Grouper"]
+    assert_all = ["Slicer", "Grouper"]
 
     def data_iterator(
         self, data: AnalyzedGroupedDataset
@@ -36,7 +36,7 @@ class GroupedSliceInfoAnalyzer(SliceInfoAnalyzer):
 class LocalKeySequence(GroupedSliceInfoAnalyzer):
     """"""
 
-    assert_steps = ["LocalKeySlicer", "PieceGrouper"]
+    assert_all = ["LocalKeySlicer", "PieceGrouper"]
 
     def __init__(self, **kwargs):
         """"""
@@ -56,7 +56,7 @@ class LocalKeySequence(GroupedSliceInfoAnalyzer):
 class LocalKeyUnique(SliceInfoAnalyzer):
     """"""
 
-    assert_steps = ["LocalKeySlicer"]
+    assert_all = ["LocalKeySlicer"]
 
     def __init__(self, **kwargs):
         """"""

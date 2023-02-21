@@ -1,12 +1,15 @@
 """Analyzers are PipelineSteps that process data and store the results in Data.processed."""
+from __future__ import annotations
+
 import logging
-from abc import ABC, abstractmethod
-from typing import Any, Collection, Iterator, Tuple, Type, TypeVar, Union
+from dataclasses import asdict, dataclass
+from enum import Enum
+from typing import ClassVar, Iterable, Tuple, Type, TypeVar, Union
 
 import dimcat.data as data_module
 from dimcat.base import PipelineStep
 from dimcat.data import AnalyzedData, Dataset
-from dimcat.dtypes import SomeID
+from dimcat.dtypes import Configuration
 from dimcat.utils import typestrings2types
 
 logger = logging.getLogger(__name__)
@@ -19,42 +22,69 @@ def _typestring2type(typestring: str) -> Type:
 R = TypeVar("R")
 
 
-class Analyzer(PipelineStep, ABC):
-    """Analyzers are PipelineSteps that process data and store the results in Data.processed."""
+class AnalyzerName(str, Enum):
+    """Identifies the various types of data facets and makes accessible their default configs and TabularData."""
 
-    result_type = "Result"
+    @classmethod
+    def make_tuple(
+        cls, facets: Iterable[Union[AnalyzerName, str]]
+    ) -> Tuple[AnalyzerName]:
+        return tuple(cls(c) for c in facets)
 
-    assert_steps: Union[str, Collection[str]] = []
-    """Analyzer.process_data() raises ValueError if at least one of the names does not belong to
-    a :obj:`PipelineStep` that is among the previous PipelineSteps applied to the :obj:`_Dataset`."""
+    TPCrange = "TPCrange"
+    PitchClassVectors = "PitchClassVectors"
+    ChordSymbolUnigrams = "ChordSymbolUnigrams"
+    ChordSymbolBigrams = "ChordSymbolBigrams"
 
-    assert_previous_step: Union[str, Collection[str]] = []
-    """Analyzer.process_data() raises ValueError if last :obj:`PipelineStep` applied to the
-    :obj:`_Dataset` does not match any of these types."""
 
-    excluded_steps: Union[str, Collection[str]] = []
-    """Analyzer.process_data() raises ValueError if any of the previous :obj:`PipelineStep` applied to the
-    :obj:`_Dataset` matches one of these types."""
+@dataclass(frozen=True)
+class AnalyzerConfig(Configuration):
+    dtype: AnalyzerName
+    analyzed_aspect: str
+    result_type: str
 
-    def __init__(self, **kwargs):
-        """Creates essential fields."""
-        super().__init__(**kwargs)
-        self.config = {}
-        """:obj:`dict`
-        This dictionary stores the parameters to be passed to the compute() method."""
-        self.group2pandas = None
-        """:obj:`str`
-        The name of the function that allows displaying one group's results as a single
-        pandas object. See data.Corpus.convert_group2pandas()"""
-        self.level_names = {}
-        """:obj:`dict`
-        Define {"indices": "index_level_name"} if the analysis is applied once per group,
-        because the index of the DataFrame holding the processed data won't be showing the
-        individual indices anymore.
-        """
+
+@dataclass(frozen=True)
+class DefaultAnalyzerConfig(AnalyzerConfig):
+    dtype: AnalyzerName
+    analyzed_aspect: str
+    result_type: str
+
+
+@dataclass(frozen=True)
+class AnalyzerID(AnalyzerConfig):
+    """Fields serving to identify one particular analyzer."""
+
+    pass
+
+
+@dataclass(frozen=True)
+class Analyzer(PipelineStep, AnalyzerID):
+    """Analyzers are PipelineSteps that process data and store the results in Data.processed.
+    The base class performs no analysis, instantiating it serves mere testing purpose.
+    """
+
+    assert_all: ClassVar[Tuple[str]] = tuple()
+    """Each of these :obj:`PipelineSteps <.PipelineStep>` needs to be matched by at least one PipelineStep previously
+     applied to the :obj:`.Dataset`, otherwise :meth:`process_data` raises a ValueError."""
+
+    # assert_previous_step: ClassVar[Tuple[str]] = tuple()
+    # """Analyzer.process_data() raises ValueError if last :obj:`PipelineStep` applied to the
+    # :obj:`_Dataset` does not match any of these types."""
+
+    excluded_steps: ClassVar[Tuple[str]] = tuple()
+    """:meth:`process_data` raises ValueError if any of the previous :obj:`PipelineStep` applied to the
+    :obj:`.Dataset` matches one of these types."""
+
+    @property
+    def config(self) -> AnalyzerConfig:
+        return AnalyzerConfig.from_dataclass(self)
+
+    @property
+    def identifier(self) -> AnalyzerID:
+        return AnalyzerID.from_dataclass(self)
 
     @staticmethod
-    @abstractmethod
     def aggregate(result_a: R, result_b: R) -> R:
         """Static method that combines two results of :meth:`compute`.
 
@@ -63,65 +93,88 @@ class Analyzer(PipelineStep, ABC):
         pass
 
     @staticmethod
-    @abstractmethod
-    def compute(self, **kwargs) -> R:
+    def compute(aspect, **kwargs) -> aspect:
         """Static method that performs the actual computation takes place."""
+        return aspect
 
-    @abstractmethod
-    def data_iterator(self, data: AnalyzedData) -> Iterator[Tuple[SomeID, Any]]:
-        """How a particular analyzer iterates through a dataset, getting the chunks passed to :meth:`compute`."""
-        yield from data
+    def dispatch(self, dataset: Dataset) -> Result:
+        """The logic how and to what the compute method is applied, based on the config and the Dataset."""
+        result_type = _typestring2type(self.result_type)
+        result_object = result_type(analyzer=self, dataset_before=dataset)
+        config_dict = asdict(self.config)
+        if True:  # more cases to follow
+            for aspect in dataset.iter_facet(self.analyzed_aspect):
+                eligible, message = self.check(aspect)
+                if not eligible:
+                    logger.info(f"{aspect.identifier} not eligible: {message}")
+                    continue
+                result_object[aspect.piece_id] = self.compute(
+                    aspect=aspect, **config_dict
+                )
+        return result_object
+
+    @classmethod
+    def _check_asserted_pipeline_steps(cls, dataset: Dataset):
+        """Returns None if the check passes.
+
+        Raises:
+            ValueError: If one of the asserted PipelineSteps has not previously been applied to the Dataset.
+        """
+        if len(cls.assert_all) == 0:
+            return True
+        assert_steps = typestrings2types(cls.assert_all)
+        missing = []
+        for step in assert_steps:
+            if not any(
+                isinstance(previous_step, step)
+                for previous_step in dataset.pipeline_steps
+            ):
+                missing.append(step)
+        if len(missing) > 0:
+            missing_names = ", ".join(m.__name__ for m in missing)
+            raise ValueError(
+                f"Applying a {cls.name} requires previous application of: {missing_names}."
+            )
+
+    @classmethod
+    def _check_excluded_pipeline_steps(cls, dataset: Dataset):
+        """Returns None if the check passes.
+
+        Raises:
+            ValueError: If any of the PipelineSteps applied to the Dataset matches one of the ones excluded.
+        """
+        if len(cls.excluded_steps) == 0:
+            return
+        excluded_steps = typestrings2types(cls.excluded_steps)
+        excluded = []
+        for step in excluded_steps:
+            if any(
+                isinstance(previous_step, step)
+                for previous_step in dataset.pipeline_steps
+            ):
+                excluded.append(step)
+        if len(excluded) > 0:
+            excluded_names = ", ".join(e.__name__ for e in excluded)
+            raise ValueError(f"{cls.name} cannot be applied after {excluded_names}.")
 
     def process_data(self, dataset: Dataset) -> AnalyzedData:
         """Returns an :obj:`AnalyzedData` copy of the Dataset with the added analysis result."""
-        analyzer_name = self.name
-        if len(self.assert_steps) > 0:
-            assert_steps = typestrings2types(self.assert_steps)
-            for step in assert_steps:
-                if not any(
-                    isinstance(previous_step, step)
-                    for previous_step in dataset.pipeline_steps
-                ):
-                    raise ValueError(
-                        f"{analyzer_name} require previous application of a {step.__name__}."
-                    )
-        if len(self.assert_previous_step) > 0:
-            assert_previous_step = typestrings2types(self.assert_previous_step)
-            previous_step = dataset.pipeline_steps[0]
-            if not isinstance(previous_step, assert_previous_step):
-                raise ValueError(
-                    f"{analyzer_name} requires the previous pipeline step to be an "
-                    f"instance of {self.assert_previous_step}, not {previous_step.__name__}."
-                )
-        if len(self.excluded_steps) > 0:
-            excluded_steps = typestrings2types(self.excluded_steps)
-            for step in excluded_steps:
-                if any(
-                    isinstance(previous_step, step)
-                    for previous_step in dataset.pipeline_steps
-                ):
-                    raise ValueError(
-                        f"{analyzer_name} cannot be applied when a {step.__name__} has been applied before."
-                    )
+        self._check_asserted_pipeline_steps(dataset)
+        self._check_excluded_pipeline_steps(dataset)
         new_dataset = AnalyzedData(dataset)
-        result_type = _typestring2type(self.result_type)
-        result_object = result_type(
-            analyzer=self, dataset_before=dataset, dataset_after=new_dataset
-        )
-        result_object.config = self.config
-        for idx, df in self.data_iterator(new_dataset):
-            eligible, message = self.check(df)
-            if not eligible:
-                logger.info(f"{idx}: {message}")
-                continue
-            result_object[idx] = self.compute(df, **self.config)
+        result_object = self.dispatch(dataset)
         result_object = self.post_process(result_object)
-        new_dataset.track_pipeline(
-            self, group2pandas=self.group2pandas, **self.level_names
-        )
-        new_dataset.set_result(self, result_object)
+        new_dataset.set_result(result_object)
         return new_dataset
 
     def post_process(self, processed):
         """Whatever needs to be done after analyzing the data before passing it to the dataset."""
         return processed
+
+
+if __name__ == "__main__":
+    a = Analyzer(dtype="Analyzer", analyzed_aspect="Harmonies", result_type="Result")
+    dataset = Dataset()
+    dataset.load("~/corelli")
+    analyzed = a.process_data(dataset)
+    print(analyzed.get_results())

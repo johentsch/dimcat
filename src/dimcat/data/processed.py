@@ -2,15 +2,28 @@ from __future__ import annotations
 
 from collections import defaultdict
 from functools import lru_cache
-from typing import Collection, Dict, Iterator, List, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Collection,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import ms3
 import pandas as pd
 from dimcat.base import Data
 from dimcat.data.base import Dataset, logger
 from dimcat.dtypes import GroupID, PieceID, SliceID, SomeID
+from dimcat.dtypes.base import SomeDataframe
 from dimcat.utils import clean_index_levels, typestrings2types
 from ms3._typing import ScoreFacet
+
+if TYPE_CHECKING:
+    from dimcat.data import Result
 
 
 class _ProcessedDataMixin(Data):
@@ -67,7 +80,7 @@ class _ProcessedDataMixin(Data):
             raise TypeError(
                 f"{cls.__name__} no output type defined for '{type(data)}', only for {list(type_mapping.keys())}."
             )
-        obj = object.__new__(new_obj_type)
+        obj = super().__new__(new_obj_type)
         # obj.__init__(data=data, **kwargs)
         return obj
 
@@ -99,82 +112,24 @@ class AnalyzedData(_ProcessedDataMixin):
         return super().__new__(cls, data=data, **kwargs)
 
     def __init__(self, data: Data, **kwargs):
-        logger.debug(f"{type(self).__name__} -> before {super()}.__init__()")
         super().__init__(data=data, **kwargs)
-        logger.debug(f"{type(self).__name__} -> after {super()}.__init__()")
-        if not hasattr(self, "processed"):
-            if hasattr(data, "processed"):
-                self.processed = data.processed
-            else:
-                self.processed: List = []
-                """Analyzers store there result here using :meth:`set_result`."""
+        self.result: Optional[Result] = None
+        """Analyzers store their result here using :meth:`set_result`."""
 
-    def set_result(self, analyzer: "Analyzer", result: "Result"):  # noqa: F821
-        assert analyzer == self.get_previous_pipeline_step()
-        self.processed = [result] + self.processed
+    def set_result(self, result: Result):
+        self.result = result
 
-    # @overload
-    # def get(self, as_pandas: bool = Literal[True]) -> Pandas:
-    #     ...
-    #
-    # @overload
-    # def get(self, as_pandas: bool = Literal[False]) -> Dict[GroupID, Any]:
-    #     ...
-    #
-    # def get(self, as_pandas: bool = True) -> Union[Pandas, Dict[GroupID, Any]]:
-    #     """Collects the results of :meth:`iter` to retrieve all processed data at once.
-    #
-    #     Args:
-    #         as_pandas:
-    #             By default, the result is a pandas DataFrame or Series where the first levels
-    #             display group identifiers (if any). Pass False to obtain a nested {group -> group_result}
-    #             dictionary instead.
-    #
-    #     Returns:
-    #         The contents of :attr:`processed` in original or adapted form.
-    #     """
-    #     if len(self.processed) == 0:
-    #         logger.info("No data has been processed so far.")
-    #         return
-    #     results = {group: result for group, result in self.iter(as_pandas=as_pandas)}
-    #     if not as_pandas:
-    #         return results
-    #     if self.group2pandas is None:
-    #         return pd.Series(results)
-    #     # default: concatenate to a single pandas object
-    #     if len(results) == 1 and () in results:
-    #         pandas_obj = pd.concat(results.values())
-    #     else:
-    #         try:
-    #             pandas_obj = pd.concat(
-    #                 results.values(),
-    #                 keys=results.keys(),
-    #                 names=self.index_levels["groups"],
-    #             )
-    #         except ValueError:
-    #             logger.info(self.index_levels["groups"])
-    #             logger.info(results.keys())
-    #             raise
-    #     return clean_index_levels(pandas_obj)
-    #
-    def get_result_object(self, idx=0):
-        return self.processed[idx]
-
-    def get_results(self) -> pd.DataFrame:
-        result_obj = self.get_result_object()
-        return result_obj.get_results()
+    def get_results(self) -> SomeDataframe:
+        return self.result.get_results()
 
     def get_group_results(self) -> pd.DataFrame:
-        result_obj = self.get_result_object()
-        return result_obj.get_group_results()
+        return self.result.get_group_results()
 
     def iter_results(self):
-        result_obj = self.get_result_object()
-        yield from result_obj.iter_results()
+        yield from self.result.iter_results()
 
     def iter_group_results(self):
-        result_obj = self.get_result_object()
-        yield from result_obj.iter_group_results()
+        yield from self.result.iter_group_results()
 
     # @overload
     # def iter(
@@ -232,7 +187,7 @@ class AnalyzedData(_ProcessedDataMixin):
     #         raise ValueError(
     #             "If you set 'as_dict' and 'ignore_groups' are in conflict, choose one or use _.get()."
     #         )
-    #     for group, result in self.processed.items():
+    #     for group, result in self.result.items():
     #         if ignore_groups:
     #             if self.group2pandas is None:
     #                 yield result

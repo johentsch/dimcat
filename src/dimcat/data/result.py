@@ -1,12 +1,14 @@
 import copy
+from collections import defaultdict
 from functools import reduce
-from typing import Iterable, Optional, Tuple, Union
+from typing import Dict, Iterable, Optional, Tuple, Union
 
 import pandas as pd
 from dimcat.base import Data
 from dimcat.data import AnalyzedData, GroupedData
 from dimcat.data.base import Dataset, logger
 from dimcat.dtypes import GroupID, SomeID
+from dimcat.dtypes.base import Configuration, PieceID, SomeDataframe, TabularData
 from ms3 import pretty_dict
 
 
@@ -17,7 +19,7 @@ class Result(Data):
         self,
         analyzer: "Analyzer",  # noqa: F821
         dataset_before: Dataset,
-        dataset_after: AnalyzedData,
+        dataset_after: AnalyzedData = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -32,20 +34,24 @@ class Result(Data):
         self,
         index_result_dict: Optional[dict] = None,
         level_names: Optional[Union[Tuple[str], str]] = None,
-    ) -> pd.DataFrame:
-        if index_result_dict is None:
-            index_result_dict = self.result_dict
-            if level_names is None:
-                level_names = self.dataset_after.index_levels["indices"]
-        elif level_names is None:
-            raise ValueError("Names of index level(s) need(s) to be specified.")
-        df = pd.DataFrame.from_dict(index_result_dict, orient="index")
-        try:
-            df.index.rename(level_names, inplace=True)
-        except TypeError:
-            print(f"level_names = {level_names}; nlevels = {df.index.nlevels}")
-            raise
-        return df
+    ) -> SomeDataframe:
+        config2piece_results: Dict[
+            Configuration, Dict[PieceID, TabularData]
+        ] = defaultdict(dict)
+        for piece_id, piece_result in self.result_dict.items():
+            config2piece_results[piece_result.config][piece_id] = piece_result
+        if len(config2piece_results) > 1:
+            raise NotImplementedError(
+                f"Currently, results with diverging configs cannot be concatenated:\n"
+                f"{set(config2piece_results.keys())}"
+            )
+        concatenated_per_config = []
+        for config, piece_results in config2piece_results.items():
+            concatenated_per_config.append(
+                config.concat_method(piece_results, names=["corpus", "piece"])
+            )
+        result = concatenated_per_config[0]
+        return result
 
     def get_results(self):
         return self._concat_results()
