@@ -6,8 +6,9 @@ from collections import defaultdict
 from typing import Dict, Iterator, List, Optional, Tuple, Type, Union
 
 from dimcat.base import Data, PipelineStep
-from dimcat.data.loader import infer_data_loader
-from dimcat.dtypes import PieceID, PieceIndex, PLoader, PPiece
+from dimcat.data.loader import PLoader, infer_data_loader
+from dimcat.data.piece import PPiece
+from dimcat.dtypes import PieceID, PieceIndex
 from typing_extensions import Self
 
 from .facet import Facet, FacetConfig, FacetName

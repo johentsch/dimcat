@@ -4,7 +4,18 @@ import logging
 from dataclasses import asdict, dataclass
 from enum import Enum, IntEnum, auto
 from functools import cached_property
-from typing import Callable, Dict, Iterable, Optional, Sequence, Tuple, Union
+from typing import (
+    Callable,
+    Dict,
+    Iterable,
+    Optional,
+    Protocol,
+    Sequence,
+    Tuple,
+    Type,
+    Union,
+    runtime_checkable,
+)
 
 import pandas as pd
 from dimcat.dtypes.base import (
@@ -21,6 +32,21 @@ from dimcat.utils.decorators import config_dataclass
 from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class PFacet(Protocol):
+    """Protocol for all objects representing one data facet of one or several pieces."""
+
+    def get_aspect(self, key: [str, Enum]) -> [TypedSequence, TabularData]:
+        ...
+
+
+@runtime_checkable
+class PNotesTable(Protocol):
+    tpc: Sequence
+
+
 # region Enums and Configs
 
 
@@ -52,11 +78,14 @@ class Aspect(str, Enum):
 class Available(IntEnum):
     """Expresses the availability of a requested facet for a given piece. Value 0 corresponds to never available.
     All following values have increasingly higher values following the logic "the higher the value, the cheaper to get".
-    That enables checking for a minimal status, e.g. ``if availability > Available.BY_TRANSFORMING``.
+    That enables checking for a minimal status, e.g. ``if availability > Available.BY_TRANSFORMING``. It implies
+    that every availability includes all higher availabilities.
     """
 
     NOT = 0
-    EXTERNALLY = auto()
+    EXTERNALLY = (
+        auto()
+    )  # means: theoretically available but unable to verify; external check required
     BY_TRANSFORMING = auto()
     BY_SLICING = auto()
     INDIVIDUALLY = auto()
@@ -171,6 +200,7 @@ class Facet(TabularData, FacetID):
         return FacetID(self)
 
 
+@dataclass(frozen=True)
 class Cadences(Facet):
     pass
 
@@ -235,6 +265,26 @@ class Rests(Facet):
 
 
 # endregion Facet types
+
+
+def get_facet_class(name: [FacetName, str]) -> Type[Facet]:
+    try:
+        facet_name = FacetName(name)
+    except ValueError:
+        raise ValueError(f"'{name}' is not a valid FacetName.")
+    name2facet = {
+        FacetName.Measures: Measures,
+        FacetName.Notes: Notes,
+        FacetName.Rests: Rests,
+        FacetName.NotesAndRests: NotesAndRests,
+        FacetName.Labels: Labels,
+        FacetName.Harmonies: Harmonies,
+        FacetName.FormLabels: FormLabels,
+        FacetName.Cadences: Cadences,
+        FacetName.Events: Events,
+        FacetName.Positions: Positions,
+    }
+    return name2facet.get(facet_name)
 
 
 if __name__ == "__main__":
