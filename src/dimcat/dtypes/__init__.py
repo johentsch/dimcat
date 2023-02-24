@@ -6,7 +6,7 @@ from .base import (
     PieceID,
     SliceID,
     SomeID,
-    TabularData,
     TypedSequence,
+    WrappedDataframe,
 )
 from .sequence import Bigrams, Ngrams, PieceIndex

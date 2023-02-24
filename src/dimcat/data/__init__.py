@@ -11,4 +11,3 @@ from .processed import (
     SlicedData,
     SlicedDataset,
 )
-from .result import ChordSymbolResult, NotesResult, Result

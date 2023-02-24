@@ -1,4 +1,5 @@
-from dimcat.data import AnalyzedData, Result
+from dimcat.analyzer.base import Result
+from dimcat.data import AnalyzedData
 from dimcat.dtypes import PNotesTable
 
 

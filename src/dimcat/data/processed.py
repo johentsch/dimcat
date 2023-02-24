@@ -23,7 +23,7 @@ from dimcat.utils import clean_index_levels, typestrings2types
 from ms3._typing import ScoreFacet
 
 if TYPE_CHECKING:
-    from dimcat.data import Result
+    from dimcat.analyzer.base import Result
 
 
 class _ProcessedDataMixin(Data):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import warnings
 from abc import ABC
 from dataclasses import dataclass, fields
 from enum import Enum
@@ -8,7 +9,9 @@ from pathlib import Path
 from typing import (
     Any,
     Callable,
+    ClassVar,
     Dict,
+    Generic,
     Iterable,
     Iterator,
     List,
@@ -104,7 +107,7 @@ class TypedSequence(Sequence[T_co]):
         return len(self.values)
 
     def __getitem__(self, int_or_slice):
-        if isinstance(int_or_slice, Union[int, slice]):
+        if isinstance(int_or_slice, (int, slice)):
             return self.values[int_or_slice]
         raise KeyError(f"{self.name} cannot be subscripted with {int_or_slice}")
 
@@ -156,9 +159,9 @@ class TypedSequence(Sequence[T_co]):
         converter: Optional[Callable[[C], T_co]] = None,
         **kwargs,
     ):
-        if not isinstance(values, (Sequence, np.ndarray, pd.Series)):
+        if not isinstance(values, (Sequence, np.ndarray, pd.Series, WrappedSeries)):
             raise TypeError(
-                f"The first argument needs to be a Sequence, not {type(values)}."
+                f"{cls.__name__}: The first argument needs to be a Sequence, not {type(values)}."
             )
         nonempty = len(values) > 0
         if converter is None and nonempty:
@@ -383,23 +386,52 @@ class DataBackend(str, Enum):
 
 SomeDataframe: TypeAlias = Union[pd.DataFrame, mpd.DataFrame]
 SomeSeries: TypeAlias = Union[pd.Series, mpd.Series]
+S = TypeVar("D", bound=SomeDataframe)
+S = TypeVar("S", bound=SomeSeries)
 
 
 @dataclass(frozen=True)
-class TabularData(ABC):
-    """Wrapper around a :obj:`pandas.DataFrame`."""
+class WrappedSeries(Generic[S]):
+    """Wrapper around a Series."""
 
-    df: SomeDataframe
+    series: S
 
     @classmethod
-    def from_df(cls, df: SomeDataframe, **kwargs):
+    def from_series(cls, series: S, **kwargs):
+        """Subclasses can implement transformational logic."""
+        instance = cls(series=series, **kwargs)
+        return instance
+
+    def __getitem__(self, int_or_slice_or_mask):
+        if isinstance(int_or_slice_or_mask, (int, slice)):
+            return self.series.iloc[int_or_slice_or_mask]
+        if isinstance(int_or_slice_or_mask, pd.Series):
+            return self.series[int_or_slice_or_mask]
+        raise KeyError(f"{self.name} cannot be subscripted with {int_or_slice_or_mask}")
+
+    def __getattr__(self, item):
+        """Enable using IndexSequence like a Series."""
+        return getattr(self.series, item)
+
+    def __len__(self) -> int:
+        return len(self.series.index)
+
+
+@dataclass(frozen=True)
+class WrappedDataframe(Generic[S]):
+    """Wrapper around a DataFrame."""
+
+    df: S
+
+    @classmethod
+    def from_df(cls, df: S, **kwargs):
         """Subclasses can implement transformational logic."""
         instance = cls(df=df, **kwargs)
         return instance
 
-    def get_aspect(self, key: str) -> TypedSequence:
+    def get_feature(self, key: str) -> WrappedSeries:
         """In its basic form, get one of the columns as a :obj:`TypedSequence`.
-        Subclasses may offer additional aspects, such as transformed columns or subsets of the table.
+        Subclasses may offer additional features, such as transformed columns or subsets of the table.
         """
         series: pd.Series = self.df[key]
         sequential_data = TypedSequence(series)
@@ -411,6 +443,9 @@ class TabularData(ABC):
 
     def __len__(self) -> int:
         return len(self.df.index)
+
+
+SomeFeature: TypeAlias = Union[WrappedDataframe, WrappedSeries]
 
 
 @dataclass(frozen=True)
@@ -425,10 +460,133 @@ class Configuration(Data):
     def dict_from_dataclass(cls, config: Configuration, **kwargs) -> Dict:
         """This class methods copies the fields it needs from another config-like dataclass."""
         init_args: Dict[str, Any] = {}
+        field_names = []
         for config_field in fields(cls):
+            field_names.append(config_field.name)
             value = getattr(config, config_field.name, None)
             if value is None:
                 continue
             init_args[config_field.name] = value
+        if any(kw not in field_names for kw in kwargs.keys()):
+            foreign = [kw for kw in kwargs.keys() if kw not in field_names]
+            plural = (
+                f"s '{', '.join(foreign)}'" if len(foreign) > 1 else f" '{foreign[0]}'"
+            )
+            logger.warning(f"Keyword argument{plural} not a field of {cls.name}.")
         init_args.update(kwargs)
         return init_args
+
+
+@dataclass(frozen=True)
+class ConfiguredObjectMixin(ABC):
+    """"""
+
+    _config_type: ClassVar[Type[Configuration]]
+    _default_config_type: ClassVar[Type[Configuration]]
+    _id_config_type: ClassVar[Type[Configuration]]
+    _id_type: ClassVar[Type[Configuration]]
+    _enum_type: ClassVar[Type[Enum]]
+
+    @classmethod
+    @property
+    def name(cls) -> str:
+        return cls.__name__
+
+    @property
+    def config(self) -> Configuration:
+        return self._config_type.from_dataclass(self)
+
+    @property
+    def identifier(self) -> Configuration:
+        return self._id_type.from_dataclass(self)
+
+    @classmethod
+    @property
+    def dtype(cls) -> Enum:
+        """Name of the class as enum member."""
+        return cls._enum_type(cls.name)
+
+    @classmethod
+    def from_config(
+        cls,
+        config: Configuration,
+        identifiers: Optional[Configuration] = None,
+        **kwargs,
+    ) -> Self:
+        """Create a Feature from a dataframe and a :obj:`Configuration`. The required identifiers can be given either
+        as :obj:`FeatureIdentifiers`, or as keyword arguments. In addition, keyword arguments can be used to override
+        values in the given configuration.
+        """
+        cfg_kwargs = cls._config_type.dict_from_dataclass(config)
+        if identifiers is not None:
+            if cls._id_config_type == Configuration:
+                warnings.warn(
+                    f"{cls.name} objects need no identifiers since their configuration makes them unique."
+                )
+            else:
+                id_kwargs = cls._id_config_type.dict_from_dataclass(identifiers)
+                cfg_kwargs.update(id_kwargs)
+        cfg_kwargs.update(kwargs)
+        if cfg_kwargs["dtype"] != cls.dtype:
+            cfg_class = config.__class__.__name__
+            raise TypeError(
+                f"Cannot initiate {cls.name} with {cfg_class}.dtype={config.dtype}."
+            )
+        return cls(**cfg_kwargs)
+
+    @classmethod
+    def from_default(
+        cls,
+        identifiers: Optional[Configuration] = None,
+        **kwargs,
+    ) -> Self:
+        """Create an instance from the default :obj:`Configuration`, which can be modified using keyword arguments."""
+        if len(kwargs) == 0:
+            config = cls.get_default_config()
+            return cls.from_config(config=config, identifiers=identifiers)
+        if cls._id_config_type == Configuration:
+            # this class takes no special identifiers, so the kwargs need no splitting
+            config = cls.get_default_config(**kwargs)
+            return cls.from_config(config=config, identifiers=identifiers)
+        # split id_kwargs from cfg_kwargs
+        cfg_field_names = [fld.name for fld in fields(cls._config_type)]
+        cfg_kwargs = {kw: arg for kw, arg in kwargs.items() if kw in cfg_field_names}
+        config = cls.get_default_config(**cfg_kwargs)
+        if len(kwargs) > len(cfg_kwargs):
+            id_kwargs = {
+                kw: arg for kw, arg in kwargs.items() if kw not in cfg_field_names
+            }
+            return cls.from_config(config=config, identifiers=identifiers, **id_kwargs)
+        return cls.from_config(config=config, identifiers=identifiers)
+
+    @classmethod
+    def from_id(cls, identifier: Configuration, **kwargs):
+        id_kwargs = cls._id_type.dict_from_dataclass(identifier)
+        id_kwargs.update(kwargs)
+        return cls(**id_kwargs)
+
+    @classmethod
+    def get_default_config(cls, **kwargs) -> Configuration:
+        kwargs["dtype"] = cls.dtype
+        return cls._default_config_type(**kwargs)
+
+
+class SentinelEnum(str, Enum):
+    ConfiguredDataframe = "ConfiguredDataframe"
+
+
+class ConfiguredDataframe(ConfiguredObjectMixin, WrappedDataframe):
+    _enum_type: ClassVar[Type[Enum]] = SentinelEnum
+
+    @classmethod
+    def from_df(
+        cls,
+        df: SomeDataframe,
+        identifiers: Optional[Configuration] = None,
+        **kwargs,
+    ) -> Self:
+        """Create a Feature from a dataframe and a :obj:`Configuration`. The required identifiers can be given either
+        as :obj:`FeatureIdentifiers`, or as keyword arguments. In addition, keyword arguments can be used to override
+        values in the given configuration.
+        """
+        return cls.from_default(df=df, identifiers=identifiers, **kwargs)

@@ -6,7 +6,7 @@ from collections import defaultdict
 from typing import Dict, Iterator, List, Optional, Tuple, Type, Union
 
 from dimcat.base import Data, PipelineStep
-from dimcat.data.facet import Facet, FacetConfig, FacetName
+from dimcat.data.facet import Facet, FacetConfig, FacetName, FeatureName
 from dimcat.data.loader import PLoader, infer_data_loader
 from dimcat.data.piece import PPiece
 from dimcat.dtypes import PieceID, PieceIndex
@@ -170,12 +170,6 @@ class Dataset(Data):
         for PID in self.piece_index:
             yield self.get_piece(PID)
 
-    def iter_facet(self, facet: Union[FacetName, FacetConfig]) -> Iterator[Facet]:
-        """Iterate through :obj:`Facet` objects."""
-        for piece_obj in self.iter_pieces():
-            facet_obj = piece_obj.get_facet(facet=facet)
-            yield facet_obj
-
     def get_facet(self, facet: Union[FacetName, FacetConfig]) -> Facet:
         """Retrieve the concatenated facet for all selected pieces.
 
@@ -203,6 +197,19 @@ class Dataset(Data):
             )
         result = concatenated_per_config[0]
         return result
+
+    def iter_facet(self, facet: Union[FacetName, FacetConfig]) -> Iterator[Facet]:
+        """Iterate through :obj:`Facet` objects."""
+        if facet is FeatureName.TPC:
+            feature = FeatureName.TPC
+            facet = FacetName.Notes
+            for piece_obj in self.iter_pieces():
+                facet_obj = piece_obj.get_facet(facet=facet)
+                yield facet_obj.get_feature(feature)
+        else:
+            for piece_obj in self.iter_pieces():
+                facet_obj = piece_obj.get_facet(facet=facet)
+                yield facet_obj
 
     def get_previous_pipeline_step(self, idx=0, of_type=None):
         """Retrieve one of the previously applied PipelineSteps, either by index or by type.

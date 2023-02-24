@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Tuple, Type
+from typing import ClassVar, Dict, Tuple, Type
 
 
 class Data(ABC):
@@ -11,7 +11,7 @@ class Data(ABC):
     to create an object from an existing Data object to enable type conversion.
     """
 
-    _registry: Dict[str, Type] = {}
+    _registry: ClassVar[Dict[str, Type]] = {}
     """Register of all subclasses."""
 
     def __init__(self, **kwargs):
@@ -36,7 +36,7 @@ class PipelineStep(ABC):
     `process_data` function is used to transform an input Data object, returning a copy.
     """
 
-    _registry: Dict[str, Type] = {}
+    _registry: ClassVar[Dict[str, Type]] = {}
     """Register of all subclasses."""
 
     def __init__(self, **kwargs):

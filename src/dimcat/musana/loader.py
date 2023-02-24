@@ -8,7 +8,7 @@ from typing import Callable, List, Literal
 
 import ms3
 import pandas as pd
-from dimcat.dtypes import Harmonies, Measures, Notes, TabularData, TypedSequence
+from dimcat.dtypes import Harmonies, Measures, Notes, TypedSequence, WrappedDataframe
 from dimcat.musana.harmony_types import Key, TonalHarmony
 from dimcat.musana.util import determine_era_based_on_year
 
@@ -16,7 +16,7 @@ from dimcat.musana.util import determine_era_based_on_year
 
 
 @dataclass(frozen=True)
-class KeyInfo(TabularData):
+class KeyInfo(WrappedDataframe):
     @cached_property
     def global_key(self) -> Key:
         key_str = self.df["globalkey"][0]

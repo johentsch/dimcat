@@ -4,7 +4,7 @@ from typing import Iterable, List, Literal, Optional, Sequence, Tuple, Union, ov
 
 from dimcat.utils import grams, transition_matrix
 
-from .base import PieceID, T_co, TabularData, TypedSequence
+from .base import PieceID, T_co, TypedSequence, WrappedDataframe
 
 # region n-grams
 
@@ -40,7 +40,7 @@ class ContiguousSequence(TypedSequence[T_co]):
         sort: bool = False,
         percent: bool = False,
         decimals: Optional[int] = None,
-    ) -> TabularData:
+    ) -> WrappedDataframe:
         """Returns a transition table of n-grams, showing the frequencies with which any subsequence of length n-1
         is followed by any of the n-grams' last elements.
 
@@ -76,7 +76,7 @@ class ContiguousSequence(TypedSequence[T_co]):
             percent=percent,
             decimals=decimals,
         )
-        return TabularData(df)
+        return WrappedDataframe(df)
 
     def get_changes(self) -> ContiguousSequence[T_co]:
         """Transforms values [A, A, A, B, C, C, A, C, C, C] --->  [A, B, C, A, C]"""
@@ -116,7 +116,7 @@ class Ngrams(ContiguousSequence[Tuple[T_co, ...]]):
         sort: bool = False,
         percent: bool = False,
         decimals: Optional[int] = None,
-    ) -> TabularData:
+    ) -> WrappedDataframe:
         """Returns a transition table of n-grams, showing the frequencies with which any subsequence of length n-1
         is followed by any of the n-grams' last elements.
 
@@ -152,7 +152,7 @@ class Ngrams(ContiguousSequence[Tuple[T_co, ...]]):
             percent=percent,
             decimals=decimals,
         )
-        return TabularData(df)
+        return WrappedDataframe(df)
 
 
 class Bigrams(Ngrams[Tuple[T_co, T_co]]):

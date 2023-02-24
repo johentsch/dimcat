@@ -6,6 +6,7 @@ from enum import Enum, IntEnum, auto
 from functools import cached_property
 from typing import (
     Callable,
+    ClassVar,
     Dict,
     Iterable,
     Optional,
@@ -20,15 +21,18 @@ from typing import (
 import pandas as pd
 from dimcat.dtypes.base import (
     Configuration,
+    ConfiguredDataframe,
     DataBackend,
     PieceID,
     SomeDataframe,
+    SomeFeature,
     SomeSeries,
-    TabularData,
     TypedSequence,
+    WrappedSeries,
 )
 from dimcat.dtypes.sequence import Bigrams, ContiguousSequence
 from dimcat.utils.decorators import config_dataclass
+from dimcat.utils.functions import get_value_profile_mask
 from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
@@ -38,7 +42,7 @@ logger = logging.getLogger(__name__)
 class PFacet(Protocol):
     """Protocol for all objects representing one data facet of one or several pieces."""
 
-    def get_aspect(self, key: [str, Enum]) -> [TypedSequence, TabularData]:
+    def get_feature(self, feature: [str, Enum]) -> SomeFeature:
         ...
 
 
@@ -69,7 +73,7 @@ class FacetName(str, Enum):
     Positions = "Positions"
 
 
-class Aspect(str, Enum):
+class FeatureName(str, Enum):
     GLOBALKEY = "globalkey"
     LOCALKEY = "localkey"
     TPC = "tpc"
@@ -128,58 +132,84 @@ class FacetID(FacetConfig, FacetIdentifiers):
 
 # endregion Enums and Configs
 
+# region Features
+
+
+@dataclass(frozen=True)
+class FeatureConfig(Configuration):
+    dtype: FeatureName
+    df_type: DataBackend
+    unfold: bool
+    interval_index: bool
+    concat_method: Callable[
+        [Dict[PieceID, TabularFeature], Sequence[str]], TabularFeature
+    ]
+
+
+@dataclass(frozen=True)
+class DefaultFeatureConfig(FeatureConfig):
+    """Configuration for any facet."""
+
+    dtype: FeatureName
+    df_type: DataBackend = DataBackend.PANDAS
+    unfold: bool = False
+    interval_index: bool = True
+    concat_method: Callable[
+        [Dict[PieceID, TabularFeature], Sequence[str]], TabularFeature
+    ] = pd.concat
+
+
+@dataclass(frozen=True)
+class FeatureIdentifiers(Configuration):
+    """Fields serving to identify the facet of one particular piece."""
+
+    piece_id: PieceID
+    file_path: str
+
+
+@config_dataclass(dtype=FeatureName, df_type=DataBackend)
+class FeatureID(FeatureIdentifiers, FeatureConfig):
+    """Config + Identifier"""
+
+    pass
+
+
+@dataclass(frozen=True)
+class TabularFeature(FeatureID, ConfiguredDataframe):
+    _config_type: ClassVar[Type[FeatureConfig]] = FeatureConfig
+    _default_config_type: ClassVar[Type[DefaultFeatureConfig]] = DefaultFeatureConfig
+    _id_config_type: ClassVar[Type[FeatureIdentifiers]] = FeatureIdentifiers
+    _id_type: ClassVar[Type[FeatureID]] = FeatureID
+    _enum_type: ClassVar[Type[Enum]] = FeatureName
+
+    @classmethod
+    def from_df(
+        cls,
+        df: SomeDataframe,
+        identifiers: Optional[FeatureIdentifiers] = None,
+        **kwargs,
+    ) -> Self:
+        """Create a Feature from a dataframe and a :obj:`Configuration`. The required identifiers can be given either
+        as :obj:`FeatureIdentifiers`, or as keyword arguments. In addition, keyword arguments can be used to override
+        values in the given configuration.
+        """
+        return cls.from_default(df=df, identifiers=identifiers, **kwargs)
+
+
+# endregion Features
+
 # region Facet types
 
 
 @config_dataclass(dtype=FacetName, df_type=DataBackend)
-class Facet(TabularData, FacetID):
+class Facet(FacetID, ConfiguredDataframe):
     """Classes structurally implementing the PFacet protocol."""
 
-    def get_aspect(self, key: Union[str, Enum]) -> ContiguousSequence:
-        """In its basic form, get one of the columns as a :obj:`TypedSequence`.
-        Subclasses may offer additional aspects, such as transformed columns or subsets of the table.
-        """
-        series: SomeSeries = self.df[key]
-        sequential_data = ContiguousSequence(series)
-        return sequential_data
-
-    @property
-    def config(self) -> FacetConfig:
-        return FacetConfig.from_dataclass(self)
-
-    @property
-    def identifier(self) -> FacetID:
-        return FacetID.from_dataclass(self)
-
-    @classmethod
-    @property
-    def dtype(cls) -> FacetName:
-        """Name of the class as enum member."""
-        return FacetName(cls.name)
-
-    @classmethod
-    def from_config(
-        cls,
-        df: SomeDataframe,
-        config: FacetConfig,
-        identifiers: Optional[FacetIdentifiers] = None,
-        **kwargs,
-    ) -> Self:
-        """Create a Facet from a dataframe and a :obj:`FacetConfig`. The required identifiers can be given either
-        as :obj:`FacetIdentifiers`, or as keyword arguments. In addition, keyword arguments can be used to override
-        values in the given configuration.
-        """
-        cfg_kwargs = FacetConfig.dict_from_dataclass(config)
-        if identifiers is not None:
-            id_kwargs = FacetIdentifiers.dict_from_dataclass(identifiers)
-            cfg_kwargs.update(id_kwargs)
-        cfg_kwargs.update(kwargs)
-        if cfg_kwargs["dtype"] != cls.dtype:
-            cfg_class = config.__class__.__name__
-            raise TypeError(
-                f"Cannot initiate {cls.name} with {cfg_class}.dtype={config.dtype}."
-            )
-        return cls(df=df, **cfg_kwargs)
+    _config_type: ClassVar[Type[FacetConfig]] = FacetConfig
+    _default_config_type: ClassVar[Type[DefaultFacetConfig]] = DefaultFacetConfig
+    _id_config_type: ClassVar[Type[FacetIdentifiers]] = FacetIdentifiers
+    _id_type: ClassVar[Type[FacetID]] = FacetID
+    _enum_type: ClassVar[Type[Enum]] = FacetName
 
     @classmethod
     def from_df(
@@ -188,21 +218,18 @@ class Facet(TabularData, FacetID):
         identifiers: Optional[FacetIdentifiers] = None,
         **kwargs,
     ) -> Self:
-        """Create a Facet from a dataframe and a :obj:`FacetConfig`. The required identifiers can be given either
+        """Create a Facet from a dataframe and a :obj:`Configuration`. The required identifiers can be given either
         as :obj:`FacetIdentifiers`, or as keyword arguments. In addition, keyword arguments can be used to override
         values in the given configuration.
         """
-        config = cls.get_default_config()
-        return cls.from_config(df=df, config=config, identifiers=identifiers, **kwargs)
+        return cls.from_default(df=df, identifiers=identifiers, **kwargs)
 
-    @classmethod
-    def from_id(cls, df: SomeDataframe, facet_id: FacetID):
-        kwargs = FacetID.dict_from_dataclass(facet_id)
-        return cls(df=df, **kwargs)
-
-    @classmethod
-    def get_default_config(cls) -> DefaultFacetConfig:
-        return DefaultFacetConfig(dtype=cls.dtype)
+    def get_feature(self, feature: Union[str, Enum]) -> WrappedSeries:
+        """In its basic form, get one of the columns as a :obj:`WrappedSeries`.
+        Subclasses may offer additional features, such as transformed columns or subsets of the table.
+        """
+        series: SomeSeries = self.df[feature]
+        return WrappedSeries(series)
 
 
 @dataclass(frozen=True)
@@ -224,15 +251,17 @@ class FormLabels(Facet):
 class Harmonies(Facet):
     @cached_property
     def globalkey(self) -> str:
-        return self.get_aspect(key=Aspect.GLOBALKEY)[0]
+        return self.get_feature(feature=FeatureName.GLOBALKEY)[0]
 
     def get_localkey_bigrams(self) -> Bigrams:
         """Returns a TypedSequence of bigram tuples representing modulations between local keys."""
-        localkey_list = self.get_aspect(key=Aspect.LOCALKEY).get_changes()
+        localkey_list = ContiguousSequence(
+            self.get_feature(feature=FeatureName.LOCALKEY)
+        ).get_changes()
         return localkey_list.get_n_grams(n=2)
 
     def get_chord_bigrams(self) -> Bigrams:
-        chords = self.get_aspect("chord")
+        chords = self.get_feature("chord")
         return chords.get_n_grams(2)
 
 
@@ -250,7 +279,7 @@ class Measures(Facet):
 class Notes(Facet):
     @cached_property
     def tpc(self) -> TypedSequence:
-        series = self.get_aspect(Aspect.TPC)
+        series = self.get_feature(FeatureName.TPC)
         return TypedSequence(series)
 
 
@@ -298,7 +327,7 @@ if __name__ == "__main__":
 
     file_path = "~/corelli/harmonies/op01n01a.tsv"
     df = ms3.load_tsv(file_path)
-    harmonies1 = Harmonies(
+    harmonies1 = Harmonies.from_default(
         dtype="Harmonies",
         df=df,
         df_type=DataBackend.PANDAS,
@@ -316,10 +345,20 @@ if __name__ == "__main__":
     f_id = FacetIdentifiers(**id_dict)
     harmonies2 = Harmonies.from_config(df=df, config=f_cfg, identifiers=f_id)
     assert harmonies1 == harmonies2
-    harmonies3 = Harmonies.from_id(df, facet_id=harmonies2)
+    harmonies3 = Harmonies.from_id(df=df, identifier=harmonies2)
     assert harmonies2 == harmonies3
     harmonies4 = Harmonies.from_df(df=df, **id_dict)
-    harmonies3 == harmonies4
+    assert harmonies3 == harmonies4
+    chords_as_sequence = ContiguousSequence(
+        harmonies2.get_feature(FeatureName.LOCALKEY)
+    )
+    chords_as_wrapped_series = harmonies1.get_feature(FeatureName.LOCALKEY).series
+    value_profile_mask = get_value_profile_mask(
+        chords_as_wrapped_series, na_values="ffill"
+    )
+    profile_by_masking = chords_as_wrapped_series[value_profile_mask]
+    profile_from_sequence = chords_as_sequence.get_changes()
+    print(profile_by_masking, profile_from_sequence)
     print(
         f"Modulations in the globalkey {harmonies2.globalkey}: {harmonies2.get_localkey_bigrams()}"
     )
