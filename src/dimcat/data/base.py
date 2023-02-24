@@ -5,11 +5,13 @@ import logging
 from collections import defaultdict
 from typing import Dict, Iterator, List, Optional, Tuple, Type, Union
 
+import pandas as pd
 from dimcat.base import Data, PipelineStep
-from dimcat.data.facet import Facet, FacetConfig, FacetName, FeatureName
+from dimcat.data.facet import Available, Facet, FacetConfig, FacetName, FeatureName
 from dimcat.data.loader import PLoader, infer_data_loader
 from dimcat.data.piece import PPiece
 from dimcat.dtypes import PieceID, PieceIndex
+from IPython.display import display
 from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
@@ -159,6 +161,17 @@ class Dataset(Data):
 
     # region Data access
 
+    def available_facets(
+        self, min_availability: Optional[Available] = None
+    ) -> Dict[PieceID, Dict[FacetName, Available]]:
+        availability = {
+            piece.piece_id: piece.get_available_facets(
+                min_availability=min_availability
+            )
+            for piece in self.iter_pieces()
+        }
+        return availability
+
     def get_piece(self, PID: Union[PieceID, Tuple[str, str]]) -> PPiece:
         """Get a Piece object by its ('corpus', 'piece') PieceID"""
         piece = self._pieces.get(PID)
@@ -244,6 +257,14 @@ class Dataset(Data):
             )
 
     # endregion Data access
+
+    # region Display
+
+    def show_available_facets(self, min_availability: Optional[Available] = None):
+        available = self.available_facets(min_availability=min_availability)
+        display(pd.DataFrame.from_dict(available, orient="index"))
+
+    # endregion Display
 
     # region Dunder methods
 
