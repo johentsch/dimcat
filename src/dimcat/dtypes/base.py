@@ -563,7 +563,7 @@ class ConfiguredObjectMixin(ABC):
         return cls.from_config(config=config, identifiers=identifiers)
 
     @classmethod
-    def from_id(cls, identifier: Configuration, **kwargs):
+    def from_id(cls, identifier: Configuration, **kwargs) -> Self:
         id_kwargs = cls._id_type.dict_from_dataclass(identifier)
         id_kwargs.update(kwargs)
         return cls(**id_kwargs)

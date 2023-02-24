@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from enum import Enum, IntEnum, auto
-from functools import cached_property
+from functools import cached_property, lru_cache
 from typing import (
     Callable,
     ClassVar,
@@ -211,6 +211,16 @@ class Facet(FacetID, ConfiguredDataframe):
     _id_type: ClassVar[Type[FacetID]] = FacetID
     _enum_type: ClassVar[Type[Enum]] = FacetName
 
+    # region Default methods repeated for type hints
+
+    @property
+    def config(self) -> FacetConfig:
+        return self._config_type.from_dataclass(self)
+
+    @property
+    def identifier(self) -> FacetID:
+        return self._id_type.from_dataclass(self)
+
     @classmethod
     def from_df(
         cls,
@@ -223,6 +233,13 @@ class Facet(FacetID, ConfiguredDataframe):
         values in the given configuration.
         """
         return cls.from_default(df=df, identifiers=identifiers, **kwargs)
+
+    @classmethod
+    def get_default_config(cls, **kwargs) -> DefaultFacetConfig:
+        kwargs["dtype"] = cls.dtype
+        return cls._default_config_type(**kwargs)
+
+    # endregion Default methods repeated for type hints
 
     def get_feature(self, feature: Union[str, Enum]) -> WrappedSeries:
         """In its basic form, get one of the columns as a :obj:`WrappedSeries`.
@@ -301,6 +318,7 @@ class Rests(Facet):
 # endregion Facet types
 
 
+@lru_cache()
 def get_facet_class(name: [FacetName, str]) -> Type[Facet]:
     try:
         facet_name = FacetName(name)
