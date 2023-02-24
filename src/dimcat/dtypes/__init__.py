@@ -9,4 +9,4 @@ from .base import (
     TypedSequence,
     WrappedDataframe,
 )
-from .sequence import Bigrams, Ngrams, PieceIndex
+from .sequence import Bigrams, Ngrams, PieceIndex, to_tuple

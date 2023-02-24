@@ -31,6 +31,7 @@ from dimcat.data import (
     SlicedDataset,
 )
 from dimcat.dtypes import PieceID, TypedSequence, to_tuple
+from dimcat.dtypes.sequence import ContiguousSequence
 from ms3 import scale_degree2name
 from pandas._testing import assert_frame_equal
 
@@ -83,7 +84,7 @@ def test_dataset2dataset(input_type, conversion_type):
         converted = conversion_type(input_object)
         print(f"\nConverted {c_name}({i_name}) -> {type(converted).__name__}")
         assert isinstance(converted, conversion_type)
-        assert hasattr(converted, "indices")
+        assert hasattr(converted, "piece_index")
         if isinstance(converted, GroupedData):
             assert hasattr(converted, "grouped_indices")
     else:
@@ -304,16 +305,20 @@ class TestTypedSequence:
         assert len(second) == len(first) * 2
 
     def test_bigrams(self):
-        bigrams = self.TS.get_n_grams(2)
-        print(f"Bigrams of {self.TS}:\n{bigrams}")
-        if self.TS.dtype == list:
+        if isinstance(self.TS[0], tuple):
+            TS = ContiguousSequence(self.TS, converter=to_tuple)
+        else:
+            TS = ContiguousSequence(self.TS)
+        bigrams = TS.get_n_grams(2)
+        print(f"Bigrams of {TS}:\n{bigrams}")
+        if TS.dtype == list:
             # lists will be treated as sequences themselves and since they have length 1, won't yield any bigrams
             return
         assert bigrams.dtype == tuple
-        tm_sequence = self.TS.get_transition_matrix(2)
+        tm_sequence = TS.get_transition_matrix(2)
         tm_bigrams = bigrams.get_transition_matrix(2)
-        assert_frame_equal(tm_sequence, tm_bigrams)
+        assert_frame_equal(tm_sequence.df, tm_bigrams.df)
         print(tm_sequence)
-        tm_sequence = self.TS.get_transition_matrix(2, sort=True)
+        tm_sequence = TS.get_transition_matrix(2, sort=True)
         tm_bigrams = bigrams.get_transition_matrix(2, sort=True)
-        assert_frame_equal(tm_sequence, tm_bigrams)
+        assert_frame_equal(tm_sequence.df, tm_bigrams.df)
