@@ -262,7 +262,10 @@ class Dataset(Data):
 
     def show_available_facets(self, min_availability: Optional[Available] = None):
         available = self.available_facets(min_availability=min_availability)
-        display(pd.DataFrame.from_dict(available, orient="index"))
+        available_df = pd.DataFrame.from_dict(available, orient="index")
+        if available_df.isna().any().any():
+            available_df = available_df.fillna(Available.EXTERNALLY).astype(int)
+        display(available_df)
 
     # endregion Display
 
