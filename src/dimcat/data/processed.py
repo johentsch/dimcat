@@ -234,7 +234,9 @@ class GroupedData(_ProcessedDataMixin):
             if hasattr(data, "grouped_indices"):
                 self.grouped_indices = data.grouped_indices
             else:
-                self.grouped_indices: Dict[GroupID, List[SomeID]] = {(): self.indices}
+                self.grouped_indices: Dict[GroupID, List[SomeID]] = {
+                    (): self.piece_index
+                }
                 """{group_key -> indices} dictionary of indices (IDs) which serve for accessing individual pieces of
                 data and associated metadata. An index is a ('corpus_name', 'piece_name') tuple ("ID")
                 that can have a third element identifying a segment/chunk of a piece.

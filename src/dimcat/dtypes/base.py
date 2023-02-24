@@ -166,7 +166,10 @@ class TypedSequence(Sequence[T_co]):
         nonempty = len(values) > 0
         if converter is None and nonempty:
             first_type = type(values[0])
-            if first_type in TypedSequence._type2subclass:
+            if (
+                first_type in TypedSequence._type2subclass
+                and cls.__name__ == "TypedSequence"
+            ):
                 new_object_type = TypedSequence._type2subclass[first_type]
                 logger.debug(
                     f"Creating {new_object_type} because {first_type} is in {TypedSequence._type2subclass.keys()}"
