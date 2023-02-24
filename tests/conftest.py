@@ -65,24 +65,18 @@ def all_corpora_path() -> str:
 @pytest.fixture(
     scope="session",
     params=[
-        (Dataset, True, False),
-        #        (Dataset, False, True),
-        #        (Dataset, True, True),
+        Dataset,
     ],
     ids=[
-        "TSV only",
-        #        "scores only",
-        #        "TSV + scores"
+        "DCML data",
     ],
 )
 def dataset(small_corpora_path, request) -> Dataset:
     path = small_corpora_path
-    obj, tsv, scores = request.param
-    initialized_obj = obj(directory=path, parse_tsv=tsv, parse_scores=scores)
-    print(
-        f"\nInitialized {type(initialized_obj).__name__}(directory='{path}', "
-        f"parse_tsv={tsv}, parse_scores={scores})"
-    )
+    obj = request.param
+    initialized_obj = obj()
+    initialized_obj.load(path)
+    print(f"\nInitialized {type(initialized_obj).__name__}.load(directory='{path}'")
     return initialized_obj
 
 
