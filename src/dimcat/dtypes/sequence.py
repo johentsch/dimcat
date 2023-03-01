@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Iterable, List, Literal, Optional, Sequence, Tuple, Union, overload
 
 from dimcat.utils import grams, transition_matrix
@@ -7,6 +8,8 @@ from dimcat.utils import grams, transition_matrix
 from .base import PieceID, T_co, TypedSequence, WrappedDataframe
 
 # region n-grams
+
+logger = logging.getLogger(__name__)
 
 
 class ContiguousSequence(TypedSequence[T_co]):
@@ -167,27 +170,42 @@ class Bigrams(Ngrams[Tuple[T_co, T_co]]):
 
 
 class PieceIndex(TypedSequence[PieceID], register_for=[PieceID]):
+    """A sequence of :obj:`PieceID` that behaves like a set in many aspects."""
+
     def __init__(
-        self, values: Sequence[Tuple[str, str]], converter=PieceID._make, **kwargs
+        self,
+        values: Sequence[Union[PieceID, Tuple[str, str]]],
+        converter=PieceID._make,
+        **kwargs,
     ):
         super().__init__(values=values, converter=converter, **kwargs)
 
+    @overload
+    def append(self, value: PieceID, convert: Literal[False]) -> None:
+        ...
+
+    @overload
+    def append(self, value: Union[PieceID, Iterable], convert: Literal[True]) -> None:
+        ...
+
+    def append(self, value: Union[PieceID, Iterable], convert: bool = False) -> None:
+        converted = self.convert(value) if convert else value
+        if converted in self.values:
+            logger.warning(f"Index already contains {value}.")
+            return
+        super().append(converted)
+
+    def __eq__(self, other):
+        return set(self.values) == set(other)
+
     def __hash__(self):
-        return hash(tuple(self.values))
+        return hash(tuple(set(self.values)))
 
     def __repr__(self):
         return f"{self.name} of length {len(self._values)}"
 
     def __str__(self):
         return f"{self.name} of length {len(self._values)}"
-
-    def get_changes(self) -> TypedSequence[T_co]:
-        """Transforms values [A, A, A, B, C, C, A, C, C, C] --->  [A, B, C, A, C]"""
-        prev = object()
-        occurrence_list = [
-            prev := v for v in self.to_series() if prev != v  # noqa: F841
-        ]
-        return TypedSequence(occurrence_list)
 
 
 # endregion indices

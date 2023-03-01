@@ -30,7 +30,7 @@ from dimcat.dtypes.base import (
     TypedSequence,
     WrappedSeries,
 )
-from dimcat.dtypes.sequence import Bigrams, ContiguousSequence
+from dimcat.dtypes.sequence import Bigrams, ContiguousSequence, PieceIndex
 from dimcat.utils.decorators import config_dataclass
 from dimcat.utils.functions import get_value_profile_mask
 from typing_extensions import Self
@@ -92,7 +92,8 @@ class Available(IntEnum):
     )  # means: theoretically available but unable to verify; external check required
     BY_TRANSFORMING = auto()
     BY_SLICING = auto()
-    INDIVIDUALLY = auto()
+    PARTIALLY = auto()
+    AVAILABLE = auto()
 
 
 @dataclass(frozen=True)
@@ -164,6 +165,40 @@ class FacetIdentifiers(Configuration):
 
 @config_dataclass(dtype=FacetName, df_type=DataBackend)
 class FacetID(FacetConfig, FacetIdentifiers):
+    """Config + Identifier"""
+
+    pass
+
+
+@dataclass(frozen=True)
+class StackedFacetConfig(Configuration):
+    dtype: FacetName
+    df_type: DataBackend
+    unfold: bool
+    interval_index: bool
+    concat_method: Callable[[Dict[PieceID, Facet], Sequence[str]], Facet]
+
+
+@dataclass(frozen=True)
+class DefaultStackedFacetConfig(StackedFacetConfig):
+    """Configuration for any facet."""
+
+    dtype: FacetName
+    df_type: DataBackend = DataBackend.PANDAS
+    unfold: bool = False
+    interval_index: bool = True
+    concat_method: Callable[[Dict[PieceID, Facet], Sequence[str]], Facet] = pd.concat
+
+
+@dataclass(frozen=True)
+class StackedFacetIdentifiers(Configuration):
+    """Fields serving to identify the stacked facets of a set of pieces."""
+
+    piece_index: PieceIndex
+
+
+@config_dataclass(dtype=FacetName, df_type=DataBackend)
+class StackedFacetID(StackedFacetConfig, StackedFacetIdentifiers):
     """Config + Identifier"""
 
     pass
@@ -316,6 +351,63 @@ class Rests(Facet):
 
 
 # endregion Facets
+
+# region StackedFacet
+
+
+@config_dataclass(dtype=FacetName, df_type=DataBackend)
+class StackedFacet(StackedFacetID, ConfiguredDataframe):
+    """Several facets stacked. De facto they are concatenated but the MultiIndex enables extracting them
+    individually.
+    """
+
+    _config_type: ClassVar[Type[StackedFacetConfig]] = StackedFacetConfig
+    _default_config_type: ClassVar[
+        Type[DefaultStackedFacetConfig]
+    ] = DefaultStackedFacetConfig
+    _id_config_type: ClassVar[Type[StackedFacetIdentifiers]] = StackedFacetIdentifiers
+    _id_type: ClassVar[Type[StackedFacetID]] = StackedFacetID
+    _enum_type: ClassVar[Type[Enum]] = FacetName
+
+    # region Default methods repeated for type hints
+
+    @property
+    def config(self) -> StackedFacetConfig:
+        return self._config_type.from_dataclass(self)
+
+    @property
+    def identifier(self) -> StackedFacetID:
+        return self._id_type.from_dataclass(self)
+
+    @classmethod
+    def from_df(
+        cls,
+        df: SomeDataframe,
+        identifiers: Optional[StackedFacetIdentifiers] = None,
+        **kwargs,
+    ) -> Self:
+        """Create a Facet from a dataframe and a :obj:`Configuration`. The required identifiers can be given either
+        as :obj:`FacetIdentifiers`, or as keyword arguments. In addition, keyword arguments can be used to override
+        values in the given configuration.
+        """
+        return cls.from_default(df=df, identifiers=identifiers, **kwargs)
+
+    @classmethod
+    def get_default_config(cls, **kwargs) -> DefaultStackedFacetConfig:
+        kwargs["dtype"] = cls.dtype
+        return cls._default_config_type(**kwargs)
+
+    # endregion Default methods repeated for type hints
+
+    def get_feature(self, feature: Union[str, Enum]) -> WrappedSeries:
+        """In its basic form, get one of the columns as a :obj:`WrappedSeries`.
+        Subclasses may offer additional features, such as transformed columns or subsets of the table.
+        """
+        series: SomeSeries = self.df[feature]
+        return WrappedSeries(series)
+
+
+# endregion StackedFacet
 
 
 @lru_cache()

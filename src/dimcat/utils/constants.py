@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import List
+
 DCML_CORPORA = [
     "c_schumann_lieder",
     "kozeluh_sonatas",
@@ -59,4 +63,17 @@ DCML_CORPORA = [
     "bach_solo",
     "poulenc_mouvements_perpetuels",
     "gastoldi_baletti",
+]
+
+DCML_FACETS: List[str] = [
+    "Measures",
+    "Notes",
+    "Rests",
+    "NotesAndRests",
+    "Labels",
+    "Harmonies",
+    "FormLabels",
+    "Cadences",
+    "Events",
+    "Positions",
 ]

@@ -25,9 +25,20 @@ from dimcat.data.facet import (
     get_facet_class,
 )
 from dimcat.dtypes import Configuration, PieceID
+from dimcat.utils.constants import DCML_FACETS
 
 if TYPE_CHECKING:
     from dimcat.data.loader import StackedFacetLoader
+
+
+def facet_argument2config(facet=Union[FacetName, Configuration]) -> FacetConfig:
+    if isinstance(facet, Configuration):
+        config = FacetConfig.from_dataclass(facet)
+        if isinstance(config.dtype, str):
+            config = replace(config, dtype=FacetName(config.dtype))
+    else:
+        config = DefaultFacetConfig(dtype=FacetName(facet))
+    return config
 
 
 @runtime_checkable
@@ -53,22 +64,6 @@ class PPiece(Protocol):
         self, facet: Union[FacetName, Configuration], min_availability: Available
     ) -> bool:
         ...
-
-
-DCML_FACETS: Tuple[FacetName] = FacetName.make_tuple(
-    (
-        "Measures",
-        "Notes",
-        "Rests",
-        "NotesAndRests",
-        "Labels",
-        "Harmonies",
-        "FormLabels",
-        "Cadences",
-        "Events",
-        "Positions",
-    )
-)
 
 
 @dataclass(frozen=True)
@@ -121,7 +116,7 @@ class DcmlPiece(Data):
     def check_facet_availability(
         self, facet: Union[FacetName, Configuration]
     ) -> Available:
-        config = self._facet_argument2config(facet)
+        config = facet_argument2config(facet)
         if config.dtype not in DCML_FACETS:
             return Available.NOT
         facet2availability = self.get_available_facets()
@@ -143,7 +138,7 @@ class DcmlPiece(Data):
             include_empty=False,
         )
         result = {
-            self._internal_keyword2facet(key): Available.INDIVIDUALLY
+            self._internal_keyword2facet(key): Available.AVAILABLE
             for key in facet2available_files.keys()
         }
         if min_availability is None:
@@ -153,9 +148,9 @@ class DcmlPiece(Data):
         }
 
     def get_facet(self, facet=Union[FacetName, Configuration]) -> Facet:
-        config = self._facet_argument2config(facet)
+        config = facet_argument2config(facet)
         availability = self.check_facet_availability(config)
-        if availability is Available.INDIVIDUALLY:
+        if availability is Available.AVAILABLE:
             keyword = self._facet2internal_keyword(config.dtype)
             file, facet_df = self.source_object.get_parsed(
                 facet=keyword,
@@ -180,21 +175,10 @@ class DcmlPiece(Data):
     def is_facet_available(
         self,
         facet: Union[FacetName, Configuration],
-        min_availability: Available = Available.INDIVIDUALLY,
+        min_availability: Available = Available.AVAILABLE,
     ) -> bool:
         availability = self.check_facet_availability(facet=facet)
         return availability >= min_availability
-
-    def _facet_argument2config(
-        self, facet=Union[FacetName, FacetConfig]
-    ) -> FacetConfig:
-        if isinstance(facet, Configuration):
-            config = FacetConfig.from_dataclass(facet)
-            if isinstance(config.dtype, str):
-                replace(config, dtype=FacetName(config.dtype))
-        else:
-            config = DefaultFacetConfig(dtype=FacetName(facet))
-        return config
 
 
 @dataclass(frozen=True)
