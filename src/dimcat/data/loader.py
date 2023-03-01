@@ -1,3 +1,7 @@
+import os
+import re
+from collections import defaultdict
+from pprint import pprint
 from typing import (
     Collection,
     Iterator,
@@ -9,6 +13,7 @@ from typing import (
 )
 
 import ms3
+import pandas as pd
 from dimcat.data.piece import DcmlPiece, PPiece
 from dimcat.dtypes import PathLike, PieceID
 from dimcat.utils.functions import resolve_dir
@@ -27,14 +32,13 @@ class DcmlLoader(PLoader):
     def __init__(
         self,
         directory: Optional[Union[PathLike, Collection[PathLike]]] = None,
-        parse_scores: bool = False,
-        parse_tsv: bool = True,
+        use_concatenated: bool = True,
         **kwargs,
     ):
-        self.parse_scores = parse_scores
-        self.parse_tsv = parse_tsv
         self.directories = []
         self.loader = ms3.Parse()
+        self.use_concatenated = use_concatenated
+
         if isinstance(directory, str):
             directory = [directory]
         if directory is None:
@@ -54,6 +58,43 @@ class DcmlLoader(PLoader):
     def add_dir(self, directory: PathLike, **kwargs):
         self.directories.append(resolve_dir(directory))
         self.loader.add_dir(directory=directory, **kwargs)
+
+
+class ConcatenatedFacetLoader(PLoader):
+    def __init__(
+        self,
+        directory: Optional[Union[PathLike, Collection[PathLike]]] = None,
+        **kwargs,
+    ):
+        self.directories = []
+
+        if isinstance(directory, str):
+            directory = [directory]
+        if directory is None:
+            return
+        for d in directory:
+            self.add_dir(directory=d, **kwargs)
+
+    def add_dir(self, directory: PathLike, **kwargs):
+        self.directories.append(resolve_dir(directory))
+        id2concatenated_facets = defaultdict(list)
+        if self.use_concatenated:
+            for directory in self.directories:
+                for f in os.listdir(directory):
+                    m = re.match(r"^concatenated_(.*)\.tsv$", f)
+                    if m is None:
+                        continue
+                    facet = m.group(1)
+                    file_path = os.path.join(directory, f)
+                    idx = pd.read_csv(file_path, sep="\t", usecols=["corpus", "fname"])
+                    for corpus, fname in idx.groupby(["corpus", "fname"]).size().index:
+                        id2concatenated_facets[PieceID(corpus, fname)].append(facet)
+        pprint(id2concatenated_facets)
+
+
+assert isinstance(
+    DcmlLoader, PLoader
+), "DcmlLoader does not correctly implement the PLoader protocol."
 
 
 def infer_data_loader(directory: str) -> Type[PLoader]:

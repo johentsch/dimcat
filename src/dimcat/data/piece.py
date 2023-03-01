@@ -40,12 +40,14 @@ class PPiece(Protocol):
         ...
 
     @abstractmethod
-    def is_facet_available(self, facet: Union[FacetName, Configuration]) -> bool:
+    def is_facet_available(
+        self, facet: Union[FacetName, Configuration], min_availability: Available
+    ) -> bool:
         ...
 
 
 @dataclass(frozen=True)
-class DcmlPiece(Data, PPiece):
+class DcmlPiece(Data):
     piece_id: PieceID
     source_object: ms3.Piece
     extractable_facets: Tuple[FacetName] = FacetName.make_tuple(
@@ -182,3 +184,6 @@ class DcmlPiece(Data, PPiece):
         else:
             config = DefaultFacetConfig(dtype=FacetName(facet))
         return config
+
+
+# assert isinstance(DcmlPiece, PPiece), "DcmlPiece does not correctly implement the PPiece protocol."

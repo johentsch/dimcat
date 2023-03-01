@@ -184,7 +184,7 @@ class Dataset(Data):
             yield self.get_piece(PID)
 
     def get_facet(self, facet: Union[FacetName, FacetConfig]) -> Facet:
-        """Retrieve the concatenated facet for all selected pieces.
+        """Retrieve the facet from all selected pieces, stacked.
 
         Args:
             facet:
@@ -272,10 +272,10 @@ class Dataset(Data):
     # region Dunder methods
 
     def __str__(self):
-        return str(self.piece_index)
+        return str(self.show_available_facets())
 
     def __repr__(self):
-        return str(self.piece_index)
+        return str(self.show_available_facets())
 
     # endregion Dunder methods
 
