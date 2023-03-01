@@ -96,6 +96,45 @@ class Available(IntEnum):
 
 
 @dataclass(frozen=True)
+class FeatureConfig(Configuration):
+    dtype: FeatureName
+    df_type: DataBackend
+    unfold: bool
+    interval_index: bool
+    concat_method: Callable[
+        [Dict[PieceID, TabularFeature], Sequence[str]], TabularFeature
+    ]
+
+
+@dataclass(frozen=True)
+class DefaultFeatureConfig(FeatureConfig):
+    """Configuration for any facet."""
+
+    dtype: FeatureName
+    df_type: DataBackend = DataBackend.PANDAS
+    unfold: bool = False
+    interval_index: bool = True
+    concat_method: Callable[
+        [Dict[PieceID, TabularFeature], Sequence[str]], TabularFeature
+    ] = pd.concat
+
+
+@dataclass(frozen=True)
+class FeatureIdentifiers(Configuration):
+    """Fields serving to identify the facet of one particular piece."""
+
+    piece_id: PieceID
+    file_path: str
+
+
+@config_dataclass(dtype=FeatureName, df_type=DataBackend)
+class FeatureID(FeatureIdentifiers, FeatureConfig):
+    """Config + Identifier"""
+
+    pass
+
+
+@dataclass(frozen=True)
 class FacetConfig(Configuration):
     dtype: FacetName
     df_type: DataBackend
@@ -136,45 +175,6 @@ class FacetID(FacetConfig, FacetIdentifiers):
 
 
 @dataclass(frozen=True)
-class FeatureConfig(Configuration):
-    dtype: FeatureName
-    df_type: DataBackend
-    unfold: bool
-    interval_index: bool
-    concat_method: Callable[
-        [Dict[PieceID, TabularFeature], Sequence[str]], TabularFeature
-    ]
-
-
-@dataclass(frozen=True)
-class DefaultFeatureConfig(FeatureConfig):
-    """Configuration for any facet."""
-
-    dtype: FeatureName
-    df_type: DataBackend = DataBackend.PANDAS
-    unfold: bool = False
-    interval_index: bool = True
-    concat_method: Callable[
-        [Dict[PieceID, TabularFeature], Sequence[str]], TabularFeature
-    ] = pd.concat
-
-
-@dataclass(frozen=True)
-class FeatureIdentifiers(Configuration):
-    """Fields serving to identify the facet of one particular piece."""
-
-    piece_id: PieceID
-    file_path: str
-
-
-@config_dataclass(dtype=FeatureName, df_type=DataBackend)
-class FeatureID(FeatureIdentifiers, FeatureConfig):
-    """Config + Identifier"""
-
-    pass
-
-
-@dataclass(frozen=True)
 class TabularFeature(FeatureID, ConfiguredDataframe):
     _config_type: ClassVar[Type[FeatureConfig]] = FeatureConfig
     _default_config_type: ClassVar[Type[DefaultFeatureConfig]] = DefaultFeatureConfig
@@ -198,7 +198,7 @@ class TabularFeature(FeatureID, ConfiguredDataframe):
 
 # endregion Features
 
-# region Facet types
+# region Facets
 
 
 @config_dataclass(dtype=FacetName, df_type=DataBackend)
@@ -315,7 +315,7 @@ class Rests(Facet):
     pass
 
 
-# endregion Facet types
+# endregion Facets
 
 
 @lru_cache()

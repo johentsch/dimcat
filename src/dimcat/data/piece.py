@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from dataclasses import dataclass, replace
-from typing import Dict, Optional, Protocol, Tuple, Union, runtime_checkable
+from typing import (
+    TYPE_CHECKING,
+    Dict,
+    Optional,
+    Protocol,
+    Tuple,
+    Union,
+    runtime_checkable,
+)
 
 import ms3
 from dimcat.base import Data
@@ -18,11 +26,12 @@ from dimcat.data.facet import (
 )
 from dimcat.dtypes import Configuration, PieceID
 
+if TYPE_CHECKING:
+    from dimcat.data.loader import StackedFacetLoader
+
 
 @runtime_checkable
 class PPiece(Protocol):
-    piece_id: PieceID
-
     @abstractmethod
     def check_facet_availability(
         self, facet: Union[FacetName, Configuration]
@@ -46,24 +55,26 @@ class PPiece(Protocol):
         ...
 
 
+DCML_FACETS: Tuple[FacetName] = FacetName.make_tuple(
+    (
+        "Measures",
+        "Notes",
+        "Rests",
+        "NotesAndRests",
+        "Labels",
+        "Harmonies",
+        "FormLabels",
+        "Cadences",
+        "Events",
+        "Positions",
+    )
+)
+
+
 @dataclass(frozen=True)
 class DcmlPiece(Data):
     piece_id: PieceID
     source_object: ms3.Piece
-    extractable_facets: Tuple[FacetName] = FacetName.make_tuple(
-        (
-            "Measures",
-            "Notes",
-            "Rests",
-            "NotesAndRests",
-            "Labels",
-            "Harmonies",
-            "FormLabels",
-            "Cadences",
-            "Events",
-            "Positions",
-        )
-    )
 
     @staticmethod
     def _internal_keyword2facet(keyword: str) -> FacetName:
@@ -82,7 +93,7 @@ class DcmlPiece(Data):
         facet = keyword2facet.get(keyword)
         if facet is None:
             raise KeyError(
-                f"'{keyword}' is not a valid ms3 keyowrd. Expected one of {list(keyword2facet.keys())}"
+                f"'{keyword}' is not a valid ms3 keyword. Expected one of {list(keyword2facet.keys())}"
             )
         return facet
 
@@ -111,7 +122,7 @@ class DcmlPiece(Data):
         self, facet: Union[FacetName, Configuration]
     ) -> Available:
         config = self._facet_argument2config(facet)
-        if config.dtype not in self.extractable_facets:
+        if config.dtype not in DCML_FACETS:
             return Available.NOT
         facet2availability = self.get_available_facets()
         availability = facet2availability.get(config.dtype)
@@ -186,4 +197,25 @@ class DcmlPiece(Data):
         return config
 
 
-# assert isinstance(DcmlPiece, PPiece), "DcmlPiece does not correctly implement the PPiece protocol."
+@dataclass(frozen=True)
+class DcmlPieceBySlicing(DcmlPiece):
+    source_object: "StackedFacetLoader"
+    available_facets: Tuple[FacetName]
+
+    def get_available_facets(
+        self, min_availability: Optional[Available] = None
+    ) -> Dict[FacetName, Available]:
+        if min_availability is None or min_availability <= Available.BY_SLICING:
+            return {
+                facet_name: Available.BY_SLICING for facet_name in self.available_facets
+            }
+        return {}
+
+
+for piece_class in (DcmlPiece, DcmlPieceBySlicing):
+    assert issubclass(
+        piece_class, PPiece
+    ), f"{piece_class.name} does not correctly implement the PPiece protocol."
+
+if __name__ == "__main__":
+    P = DcmlPieceBySlicing(("a", "b"), None)
