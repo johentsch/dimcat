@@ -1,5 +1,6 @@
 """Utility functions that are or might be used by several modules or useful in external contexts."""
 import logging
+import os
 from typing import Collection, List, Optional, Tuple, TypeAlias, TypeVar, Union
 
 import numpy as np
@@ -204,6 +205,16 @@ def interval_index2interval(ix):
 def nan_eq(a, b):
     """Returns True if a and b are equal or both null. Works on two Series or two elements."""
     return (a == b) | (pd.isnull(a) & pd.isnull(b))
+
+
+def resolve_dir(d):
+    """Resolves '~' to HOME directory and turns ``d`` into an absolute path."""
+    if d is None:
+        return None
+    d = str(d)
+    if "~" in d:
+        return os.path.expanduser(d)
+    return os.path.abspath(d)
 
 
 def transition_matrix(

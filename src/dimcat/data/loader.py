@@ -11,6 +11,7 @@ from typing import (
 import ms3
 from dimcat.data.piece import DcmlPiece, PPiece
 from dimcat.dtypes import PathLike, PieceID
+from dimcat.utils.functions import resolve_dir
 
 
 @runtime_checkable
@@ -51,7 +52,7 @@ class DcmlLoader(PLoader):
         self.loader = new_loader
 
     def add_dir(self, directory: PathLike, **kwargs):
-        self.directories.append(directory)
+        self.directories.append(resolve_dir(directory))
         self.loader.add_dir(directory=directory, **kwargs)
 
 
