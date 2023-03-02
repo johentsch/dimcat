@@ -184,8 +184,8 @@ class Analyzer(PipelineStep, AnalyzerID):
             cls.from_config(config=config, identifiers=identifiers)
 
     @classmethod
-    def from_id(cls, identifier: AnalyzerID):
-        kwargs = cls.id_type.dict_from_dataclass(identifier)
+    def from_id(cls, config_id: AnalyzerID):
+        kwargs = cls.id_type.dict_from_dataclass(config_id)
         return cls(**kwargs)
 
     @classmethod

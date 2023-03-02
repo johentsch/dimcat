@@ -19,7 +19,7 @@ from dimcat.data.facet import (
     DefaultFacetConfig,
     Facet,
     FacetConfig,
-    FacetIdentifiers,
+    FacetID,
     FacetName,
     PFacet,
     get_facet_class,
@@ -150,6 +150,9 @@ class DcmlPiece(Data):
     def get_facet(self, facet=Union[FacetName, Configuration]) -> Facet:
         config = facet_argument2config(facet)
         availability = self.check_facet_availability(config)
+        facet_id = FacetID.from_dataclass(
+            config=config, piece_id=self.piece_id, file_path=""
+        )
         if availability is Available.AVAILABLE:
             keyword = self._facet2internal_keyword(config.dtype)
             file, facet_df = self.source_object.get_parsed(
@@ -159,14 +162,11 @@ class DcmlPiece(Data):
                 interval_index=config.interval_index,
             )
             facet_class = get_facet_class(config.dtype)
-            identifiers = FacetIdentifiers(
-                piece_id=self.piece_id, file_path=file.full_path
-            )
-            facet = facet_class.from_config(
-                df=facet_df, config=config, identifiers=identifiers
-            )
+            facet = facet_class.from_id(config_id=facet_id, df=facet_df)
             return facet
-        # elif other cases
+        elif availability is Available.BY_SLICING:
+            sliced_facet = self.source_object.get_facet(facet_id)
+            return sliced_facet
         else:
             raise ValueError(
                 f"{self.piece_id}: {config.dtype} has availability {availability}"
