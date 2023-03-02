@@ -4,19 +4,23 @@ from __future__ import annotations
 import copy
 import logging
 from collections import defaultdict
-from dataclasses import asdict, dataclass, fields
-from enum import Enum
+from dataclasses import asdict, dataclass
+from enum import Enum, auto
 from functools import reduce
-from typing import Any, ClassVar, Dict, Iterable, Optional, Tuple, Type, TypeVar, Union
+from typing import ClassVar, Dict, Iterable, Optional, Tuple, Type, TypeVar, Union
 
 from dimcat.base import Data, PipelineStep
 from dimcat.data import AnalyzedData, Dataset, GroupedData
 from dimcat.data.facet import FeatureName
 from dimcat.dtypes import Configuration, GroupID, PieceID, SomeID, WrappedDataframe
-from dimcat.dtypes.base import SomeDataframe, SomeFeature
+from dimcat.dtypes.base import (
+    ConfiguredObjectMixin,
+    SomeDataframe,
+    SomeFeature,
+    SomeSeries,
+)
 from dimcat.utils import typestrings2types
 from ms3 import pretty_dict
-from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
 
@@ -51,11 +55,24 @@ class ResultName(str, Enum):
     Result = "Result"
 
 
+class DispatchStrategy(Enum):
+    GROUPBY_APPLY = auto()
+    ITER_STACK = auto()
+
+
+class UnitOfAnalysis(Enum):
+    SLICE = auto()
+    PIECE = auto()
+    GROUP = auto()
+
+
 @dataclass(frozen=True)
 class AnalyzerConfig(Configuration):
     dtype: AnalyzerName
     analyzed_feature: FeatureName
     result_type: ResultName
+    strategy: DispatchStrategy
+    smallest_unit: UnitOfAnalysis
 
 
 @dataclass(frozen=True)
@@ -63,6 +80,8 @@ class DefaultAnalyzerConfig(AnalyzerConfig):
     dtype: AnalyzerName
     analyzed_feature: FeatureName
     result_type: ResultName
+    strategy: DispatchStrategy = DispatchStrategy.GROUPBY_APPLY
+    smallest_unit: UnitOfAnalysis = UnitOfAnalysis.SLICE
 
 
 @dataclass(frozen=True)
@@ -73,10 +92,16 @@ class AnalyzerID(AnalyzerConfig):
 
 
 @dataclass(frozen=True)
-class Analyzer(PipelineStep, AnalyzerID):
+class Analyzer(AnalyzerID, ConfiguredObjectMixin, PipelineStep):
     """Analyzers are PipelineSteps that process data and store the results in Data.processed.
     The base class performs no analysis, instantiating it serves mere testing purpose.
     """
+
+    _config_type: ClassVar[Type[Configuration]] = AnalyzerConfig
+    _default_config_type: ClassVar[Type[Configuration]] = DefaultAnalyzerConfig
+    _id_type: ClassVar[Type[Configuration]] = AnalyzerID
+    _id_config_type: ClassVar[Type[Configuration]] = Configuration
+    _enum_type: ClassVar[Type[Enum]] = AnalyzerName
 
     assert_all: ClassVar[Tuple[str]] = tuple()
     """Each of these :obj:`PipelineSteps <.PipelineStep>` needs to be matched by at least one PipelineStep previously
@@ -90,24 +115,6 @@ class Analyzer(PipelineStep, AnalyzerID):
     """:meth:`process_data` raises ValueError if any of the previous :obj:`PipelineStep` applied to the
     :obj:`.Dataset` matches one of these types."""
 
-    config_type: ClassVar[Type[AnalyzerConfig]] = AnalyzerConfig
-    default_config_type: ClassVar[Type[DefaultAnalyzerConfig]] = DefaultAnalyzerConfig
-    id_type: ClassVar[Type[AnalyzerID]] = AnalyzerID
-
-    @property
-    def config(self) -> AnalyzerConfig:
-        return self.config_type.from_dataclass(self)
-
-    @property
-    def identifier(self) -> AnalyzerID:
-        return self.id_type.from_dataclass(self)
-
-    @classmethod
-    @property
-    def dtype(cls) -> AnalyzerName:
-        """Name of the class as enum member."""
-        return AnalyzerName(cls.name)
-
     @staticmethod
     def aggregate(result_a: R, result_b: R) -> R:
         """Static method that combines two results of :meth:`compute`.
@@ -118,7 +125,14 @@ class Analyzer(PipelineStep, AnalyzerID):
 
     @staticmethod
     def compute(feature: SomeFeature, **kwargs) -> SomeFeature:
-        """Static method that performs the actual computation takes place."""
+        """Static method that performs the actual computation."""
+        return feature
+
+    @staticmethod
+    def fold(feature: SomeFeature, groupby: SomeSeries, **kwargs) -> SomeFeature:
+        """Static method that performs the computation on a groupby. The value of ``groupby`` needs to be
+        a Series of the same length as ``feature`` or otherwise work as positional argument to feature.groupby().
+        """
         return feature
 
     def dispatch(self, dataset: Dataset) -> Result:
@@ -126,8 +140,8 @@ class Analyzer(PipelineStep, AnalyzerID):
         result_type = _typestring2type(self.result_type)
         result_object = result_type(analyzer=self, dataset_before=dataset)
         config_dict = asdict(self.config)
-        if True:  # more cases to follow
-            for feature in dataset.iter_facet(self.analyzed_feature):
+        if self.strategy is DispatchStrategy.ITER_STACK:  # more cases to follow
+            for feature in dataset.iter_feature(self.analyzed_feature):
                 eligible, message = self.check(feature)
                 if not eligible:
                     logger.info(f"{feature.identifier} not eligible: {message}")
@@ -135,62 +149,11 @@ class Analyzer(PipelineStep, AnalyzerID):
                 result_object[feature.identifier] = self.compute(
                     feature=feature, **config_dict
                 )
+        if self.strategy is DispatchStrategy.GROUPBY_APPLY:
+            stacked_feature = dataset.get_feature(self.analyzed_feature)
+            stacked_result = self.fold(stacked_feature)
+            return result_object(stacked_result)
         return result_object
-
-    @classmethod
-    def from_config(
-        cls,
-        config: AnalyzerConfig,
-        identifiers: Any = None,
-        **kwargs,
-    ) -> Self:
-        """"""
-        cfg_kwargs = cls.config_type.dict_from_dataclass(config)
-        cfg_kwargs.update(kwargs)
-        if identifiers is not None:
-            logger.warning(
-                "Analyzers currently do not come with particular identifiers."
-            )
-        if cfg_kwargs["dtype"] != cls.dtype:
-            cfg_class = config.__class__.__name__
-            raise TypeError(
-                f"Cannot initiate {cls.name} with {cfg_class}.dtype={config.dtype}."
-            )
-        return cls(**cfg_kwargs)
-
-    @classmethod
-    def from_default(
-        cls,
-        identifiers: Any = None,
-        **kwargs,
-    ) -> Self:
-        """"""
-        if len(kwargs) > 0:
-            cfg_field_names = [fld.name for fld in fields(cls.config_type)]
-            cfg_kwargs = {
-                kw: arg for kw, arg in kwargs.items() if kw in cfg_field_names
-            }
-            config = cls.get_default_config(**cfg_kwargs)
-            if len(kwargs) > len(cfg_kwargs):
-                id_kwargs = {
-                    kw: arg for kw, arg in kwargs.items() if kw not in cfg_field_names
-                }
-                return cls.from_config(
-                    config=config, identifiers=identifiers, **id_kwargs
-                )
-            return cls.from_config(config=config, identifiers=identifiers)
-        else:
-            config = cls.get_default_config()
-            cls.from_config(config=config, identifiers=identifiers)
-
-    @classmethod
-    def from_id(cls, config_id: AnalyzerID):
-        kwargs = cls.id_type.dict_from_dataclass(config_id)
-        return cls(**kwargs)
-
-    @classmethod
-    def get_default_config(cls, **kwargs) -> DefaultAnalyzerConfig:
-        return cls.default_config_type(dtype=cls.dtype, **kwargs)
 
     @classmethod
     def _check_asserted_pipeline_steps(cls, dataset: Dataset):

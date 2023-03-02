@@ -1,10 +1,15 @@
 from dataclasses import dataclass
 from typing import ClassVar, Type
 
-from dimcat.analyzer.base import Analyzer, AnalyzerName, ResultName
+from dimcat.analyzer.base import (
+    Analyzer,
+    AnalyzerName,
+    DispatchStrategy,
+    ResultName,
+    UnitOfAnalysis,
+)
 from dimcat.data.facet import FeatureName
-from dimcat.dtypes import Configuration
-from dimcat.dtypes.base import WrappedSeries
+from dimcat.dtypes.base import Configuration, WrappedSeries
 
 
 @dataclass(frozen=True)
@@ -12,6 +17,8 @@ class CounterConfig(Configuration):
     analyzed_feature: FeatureName
     result_type: ResultName
     dtype: AnalyzerName
+    strategy: DispatchStrategy
+    smallest_unit: UnitOfAnalysis
 
 
 @dataclass(frozen=True)
@@ -19,6 +26,8 @@ class DefaultCounterConfig(CounterConfig):
     analyzed_feature: FeatureName
     result_type: ResultName = ResultName.Result
     dtype: AnalyzerName = AnalyzerName.Counter
+    strategy: DispatchStrategy = DispatchStrategy.GROUPBY_APPLY
+    smallest_unit: UnitOfAnalysis = UnitOfAnalysis.SLICE
 
 
 @dataclass(frozen=True)
@@ -30,9 +39,9 @@ class CounterID(CounterConfig):
 
 @dataclass(frozen=True)
 class Counter(Analyzer, CounterID):
-    config_type: ClassVar[Type[CounterConfig]] = CounterConfig
-    default_config_type: ClassVar[Type[DefaultCounterConfig]] = DefaultCounterConfig
-    id_type: ClassVar[Type[CounterID]] = CounterID
+    _config_type: ClassVar[Type[CounterConfig]] = CounterConfig
+    _default_config_type: ClassVar[Type[DefaultCounterConfig]] = DefaultCounterConfig
+    _id_type: ClassVar[Type[CounterID]] = CounterID
 
     @staticmethod
     def compute(feature: WrappedSeries, **kwargs) -> WrappedSeries:
