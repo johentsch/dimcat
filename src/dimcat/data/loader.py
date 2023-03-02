@@ -13,6 +13,7 @@ from typing import (
     Set,
     Type,
     Union,
+    overload,
     runtime_checkable,
 )
 
@@ -21,10 +22,14 @@ import pandas as pd
 from dimcat.data.facet import (
     Available,
     DefaultStackedFacetConfig,
+    Facet,
+    FacetConfig,
+    FacetID,
     FacetName,
     StackedFacet,
     StackedFacetConfig,
     StackedFacetID,
+    get_stacked_facet_class,
 )
 from dimcat.data.piece import DcmlPiece, DcmlPieceBySlicing, PPiece
 from dimcat.dtypes import Configuration, PathLike, PieceID, PieceIndex
@@ -157,26 +162,47 @@ class StackedFacetLoader(PLoader):
 
     def _get_stored_facet(self, facet_name: FacetName) -> StackedFacet:
         if facet_name not in self.facet_store:
-            stacked_df = ms3.load_tsv(
-                self.facet2file_path[facet_name], index_col=[0, 1, 2]
-            )
+            file_path = self.facet2file_path[facet_name]
+            stacked_df = ms3.load_tsv(file_path, index_col=[0, 1, 2])
             piece_index = PieceIndex(self.facet2ids[facet_name])
-            self.facet_store[facet_name] = StackedFacet.from_df(
-                stacked_df, piece_index=piece_index
+            facet_class = get_stacked_facet_class(facet_name)
+            self.facet_store[facet_name] = facet_class.from_df(
+                df=stacked_df, piece_index=piece_index, file_path=file_path
             )
         return self.facet_store[facet_name]
 
-    def get_facet(self, facet=Union[FacetName, Configuration]) -> StackedFacet:
+    @overload
+    def get_facet(self, facet=FacetID) -> Facet:
+        ...
+
+    @overload
+    def get_facet(
+        self, facet=Union[FacetName, StackedFacetID, StackedFacetConfig, FacetConfig]
+    ) -> StackedFacet:
+        ...
+
+    def get_facet(
+        self, facet=Union[FacetName, Configuration]
+    ) -> Union[StackedFacet, Facet]:
         config = facet_argument2config(facet)
         facet_name = config.dtype
         if isinstance(facet, StackedFacetID):
             available_ids = self.facet2ids[facet_name]
             selected_ids = set(facet.piece_index).intersection(set(available_ids))
             if len(selected_ids) == 0:
-                raise ValueError(f"None of the requested piece IDs available: {facet}")
+                raise KeyError(f"None of the requested piece IDs available: {facet}")
             stacked_facet = self._get_stored_facet(facet_name)
             if len(selected_ids) == len(available_ids):
                 return stacked_facet
+            raise NotImplementedError
+        elif isinstance(facet, FacetID):
+            if facet.piece_id in self.facet2ids[facet_name]:
+                stacked_facet = self._get_stored_facet(facet_name)
+                sliced_facet = stacked_facet.get_facet(facet.piece_id)
+                return sliced_facet
+            raise KeyError(f"Piece ID not available: {facet.piece_id}")
+        else:
+            raise NotImplementedError(f"Don't know how to deal with {facet}")
 
     def iter_pieces(self) -> Iterator[PPiece]:
         for piece_id, facets in self.id2facets.items():
@@ -197,12 +223,11 @@ def infer_data_loader(directory: str) -> Type[PLoader]:
 if __name__ == "__main__":
     from dimcat.data.facet import FacetName, PNotesTable
 
-    loader = StackedFacetLoader(directory="~/dcml_corpora")
-    print(loader.facet2file_path)
+    loader = StackedFacetLoader(directory="~/corelli")
     assert isinstance(loader, PLoader)
     for piece in loader.iter_pieces():
         assert isinstance(piece, PPiece)
         facet = piece.get_facet("Notes")
         assert isinstance(facet, PNotesTable)
-        print(f"{piece.piece_id} yields a PNotesTable with {len(facet)} notes")
+        print(f"{piece.piece_id} yields a {type(facet)} with {len(facet)} notes")
     print("OK")

@@ -71,6 +71,16 @@ class FacetName(str, Enum):
     Cadences = "Cadences"
     Events = "Events"
     Positions = "Positions"
+    StackedMeasures = "StackedMeasures"
+    StackedNotes = "StackedNotes"
+    StackedRests = "StackedRests"
+    StackedNotesAndRests = "StackedNotesAndRests"
+    StackedLabels = "StackedLabels"
+    StackedHarmonies = "StackedHarmonies"
+    StackedFormLabels = "StackedFormLabels"
+    StackedCadences = "StackedCadences"
+    StackedEvents = "StackedEvents"
+    StackedPositions = "StackedPositions"
 
 
 class FeatureName(str, Enum):
@@ -195,6 +205,7 @@ class StackedFacetIdentifiers(Configuration):
     """Fields serving to identify the stacked facets of a set of pieces."""
 
     piece_index: PieceIndex
+    file_path: str
 
 
 @config_dataclass(dtype=FacetName, df_type=DataBackend)
@@ -350,6 +361,37 @@ class Rests(Facet):
     pass
 
 
+@lru_cache()
+def get_facet_class(name: [FacetName, str]) -> Type[Facet]:
+    try:
+        facet_name = FacetName(name)
+    except ValueError:
+        raise ValueError(f"'{name}' is not a valid FacetName.")
+    name2facet = {
+        FacetName.Measures: Measures,
+        FacetName.Notes: Notes,
+        FacetName.Rests: Rests,
+        FacetName.NotesAndRests: NotesAndRests,
+        FacetName.Labels: Labels,
+        FacetName.Harmonies: Harmonies,
+        FacetName.FormLabels: FormLabels,
+        FacetName.Cadences: Cadences,
+        FacetName.Events: Events,
+        FacetName.Positions: Positions,
+        FacetName.StackedMeasures: Measures,
+        FacetName.StackedNotes: Notes,
+        FacetName.StackedRests: Rests,
+        FacetName.StackedNotesAndRests: NotesAndRests,
+        FacetName.StackedLabels: Labels,
+        FacetName.StackedHarmonies: Harmonies,
+        FacetName.StackedFormLabels: FormLabels,
+        FacetName.StackedCadences: Cadences,
+        FacetName.StackedEvents: Events,
+        FacetName.StackedPositions: Positions,
+    }
+    return name2facet.get(facet_name)
+
+
 # endregion Facets
 
 # region StackedFacet
@@ -406,29 +448,96 @@ class StackedFacet(StackedFacetID, ConfiguredDataframe):
         series: SomeSeries = self.df[feature]
         return WrappedSeries(series)
 
+    def get_facet(self, piece_id: PieceID) -> Facet:
+        sliced = self.df.loc[piece_id,]
+        facet_constructor = get_facet_class(self.dtype)
+        return facet_constructor.from_id(
+            config_id=self, df=sliced, piece_id=piece_id, file_path=self.file_path
+        )
 
-# endregion StackedFacet
+
+@dataclass(frozen=True)
+class StackedMeasures(StackedFacet):
+    pass
+
+
+@dataclass(frozen=True)
+class StackedNotes(StackedFacet):
+    pass
+
+
+@dataclass(frozen=True)
+class StackedRests(StackedFacet):
+    pass
+
+
+@dataclass(frozen=True)
+class StackedNotesAndRests(StackedFacet):
+    pass
+
+
+@dataclass(frozen=True)
+class StackedLabels(StackedFacet):
+    pass
+
+
+@dataclass(frozen=True)
+class StackedHarmonies(StackedFacet):
+    pass
+
+
+@dataclass(frozen=True)
+class StackedFormLabels(StackedFacet):
+    pass
+
+
+@dataclass(frozen=True)
+class StackedCadences(StackedFacet):
+    pass
+
+
+@dataclass(frozen=True)
+class StackedEvents(StackedFacet):
+    pass
+
+
+@dataclass(frozen=True)
+class StackedPositions(StackedFacet):
+    pass
 
 
 @lru_cache()
-def get_facet_class(name: [FacetName, str]) -> Type[Facet]:
+def get_stacked_facet_class(name: [FacetName, str]) -> Type[StackedFacet]:
     try:
         facet_name = FacetName(name)
     except ValueError:
         raise ValueError(f"'{name}' is not a valid FacetName.")
     name2facet = {
-        FacetName.Measures: Measures,
-        FacetName.Notes: Notes,
-        FacetName.Rests: Rests,
-        FacetName.NotesAndRests: NotesAndRests,
-        FacetName.Labels: Labels,
-        FacetName.Harmonies: Harmonies,
-        FacetName.FormLabels: FormLabels,
-        FacetName.Cadences: Cadences,
-        FacetName.Events: Events,
-        FacetName.Positions: Positions,
+        FacetName.Measures: StackedMeasures,
+        FacetName.Notes: StackedNotes,
+        FacetName.Rests: StackedRests,
+        FacetName.NotesAndRests: StackedNotesAndRests,
+        FacetName.Labels: StackedLabels,
+        FacetName.Harmonies: StackedHarmonies,
+        FacetName.FormLabels: StackedFormLabels,
+        FacetName.Cadences: StackedCadences,
+        FacetName.Events: StackedEvents,
+        FacetName.Positions: StackedPositions,
+        FacetName.StackedMeasures: StackedMeasures,
+        FacetName.StackedNotes: StackedNotes,
+        FacetName.StackedRests: StackedRests,
+        FacetName.StackedNotesAndRests: StackedNotesAndRests,
+        FacetName.StackedLabels: StackedLabels,
+        FacetName.StackedHarmonies: StackedHarmonies,
+        FacetName.StackedFormLabels: StackedFormLabels,
+        FacetName.StackedCadences: StackedCadences,
+        FacetName.StackedEvents: StackedEvents,
+        FacetName.StackedPositions: StackedPositions,
     }
     return name2facet.get(facet_name)
+
+
+# endregion StackedFacet
 
 
 if __name__ == "__main__":
@@ -455,7 +564,7 @@ if __name__ == "__main__":
     f_id = FacetIdentifiers(**id_dict)
     harmonies2 = Harmonies.from_config(df=df, config=f_cfg, identifiers=f_id)
     assert harmonies1 == harmonies2
-    harmonies3 = Harmonies.from_id(df=df, identifier=harmonies2)
+    harmonies3 = Harmonies.from_id(config_id=harmonies2, df=df)
     assert harmonies2 == harmonies3
     harmonies4 = Harmonies.from_df(df=df, **id_dict)
     assert harmonies3 == harmonies4
