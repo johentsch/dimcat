@@ -169,7 +169,7 @@ class DcmlPiece(Data):
             return sliced_facet
         else:
             raise ValueError(
-                f"{self.piece_id}: {config.dtype} has availability {availability}"
+                f"{self.piece_id}: {config.dtype} has availability {availability!r}"
             )
 
     def is_facet_available(

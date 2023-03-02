@@ -57,6 +57,9 @@ class PLoader(Protocol):
     def iter_pieces(self) -> Iterator[PPiece]:
         ...
 
+    def get_facet(self, facet=Union[FacetName, Configuration]) -> Union[StackedFacet]:
+        ...
+
 
 class DcmlLoader(PLoader):
     def __init__(
@@ -75,6 +78,54 @@ class DcmlLoader(PLoader):
             return
         for d in directory:
             self.add_dir(directory=d, **kwargs)
+
+    @overload
+    def get_facet(self, facet=FacetID) -> Facet:
+        ...
+
+    @overload
+    def get_facet(
+        self, facet=Union[FacetName, StackedFacetID, StackedFacetConfig, FacetConfig]
+    ) -> StackedFacet:
+        ...
+
+    def get_facet(
+        self, facet=Union[FacetName, Configuration]
+    ) -> Union[StackedFacet, Facet]:
+        config = facet_argument2config(facet)
+        facet_name = config.dtype
+        selected_ids = None
+        if isinstance(facet, StackedFacetID):
+            selected_ids = facet.piece_index
+        elif isinstance(facet, FacetID):
+            selected_ids = [facet.piece_id]
+        config2facet_objects: Dict[FacetConfig, Dict[PieceID, Facet]] = defaultdict(
+            dict
+        )
+        for piece_obj in self.iter_pieces():
+            if selected_ids is not None and piece_obj.piece_id not in selected_ids:
+                continue
+            facet_obj = piece_obj.get_facet(facet=facet)
+            facet_config = FacetConfig.from_dataclass(facet_obj)
+            config2facet_objects[facet_config][facet_obj.piece_id] = facet_obj
+        if len(config2facet_objects) > 1:
+            raise NotImplementedError(
+                f"Currently, facets with diverging configs cannot be concatenated:\n"
+                f"{set(config2facet_objects.keys())}"
+            )
+        concatenated_per_config = []
+        piece_ids = []
+        for config, facet_objects in config2facet_objects.items():
+            concatenated_per_config.append(
+                config.concat_method(facet_objects, names=["corpus", "piece"])
+            )
+            piece_ids.extend(facet_objects.keys())
+        facet_constructor = get_stacked_facet_class(facet_name)
+        piece_index = PieceIndex(piece_ids)
+        result = facet_constructor.from_df(
+            df=concatenated_per_config[0], piece_index=piece_index, file_path=None
+        )
+        return result
 
     def iter_pieces(self) -> Iterator[DcmlPiece]:
         for corpus_name, ms3_corpus in self.loader.iter_corpora():
@@ -110,12 +161,11 @@ class StackedFacetLoader(PLoader):
             m = re.match(r"^concatenated_(.*)\.tsv$", f)
             if m is None:
                 continue
-            camel_case = str2camel_case(m.group(1))
             try:
-                facet_name = FacetName(camel_case)
-            except ValueError:
+                facet_name = DcmlPiece._internal_keyword2facet(m.group(1))
+            except KeyError:
                 logger.warning(
-                    f"'{f}' concatenates {camel_case} which is not a recognized facet."
+                    f"'{f}' concatenates {m.group(1)} which is not a recognized facet."
                 )
                 continue
             file_path = os.path.join(directory, f)
@@ -161,14 +211,17 @@ class StackedFacetLoader(PLoader):
         }
 
     def _get_stored_facet(self, facet_name: FacetName) -> StackedFacet:
+        file_path = self.facet2file_path[facet_name]
         if facet_name not in self.facet_store:
-            file_path = self.facet2file_path[facet_name]
+            logger.debug(f"Loading {file_path}...")
             stacked_df = ms3.load_tsv(file_path, index_col=[0, 1, 2])
             piece_index = PieceIndex(self.facet2ids[facet_name])
             facet_class = get_stacked_facet_class(facet_name)
             self.facet_store[facet_name] = facet_class.from_df(
                 df=stacked_df, piece_index=piece_index, file_path=file_path
             )
+        else:
+            logger.debug(f"Using previously loaded {file_path}...")
         return self.facet_store[facet_name]
 
     @overload
@@ -202,7 +255,7 @@ class StackedFacetLoader(PLoader):
                 return sliced_facet
             raise KeyError(f"Piece ID not available: {facet.piece_id}")
         else:
-            raise NotImplementedError(f"Don't know how to deal with {facet}")
+            return self._get_stored_facet(facet_name)
 
     def iter_pieces(self) -> Iterator[PPiece]:
         for piece_id, facets in self.id2facets.items():
@@ -211,9 +264,10 @@ class StackedFacetLoader(PLoader):
             )
 
 
-assert isinstance(
-    DcmlLoader, PLoader
-), "DcmlLoader does not correctly implement the PLoader protocol."
+for loader_class in (DcmlLoader, StackedFacetLoader):
+    assert issubclass(
+        loader_class, PLoader
+    ), f"{loader_class} does not correctly implement the PLoader protocol."
 
 
 def infer_data_loader(directory: str) -> Type[PLoader]:
@@ -227,7 +281,12 @@ if __name__ == "__main__":
     assert isinstance(loader, PLoader)
     for piece in loader.iter_pieces():
         assert isinstance(piece, PPiece)
+        print(
+            f"{piece.name} with available facets {piece.get_available_facets()}, and "
+            f".check_facet_availability('Positions') yielding {piece.check_facet_availability('Positions')!r}"
+        )
         facet = piece.get_facet("Notes")
         assert isinstance(facet, PNotesTable)
         print(f"{piece.piece_id} yields a {type(facet)} with {len(facet)} notes")
+
     print("OK")

@@ -2,12 +2,11 @@
 from __future__ import annotations
 
 import logging
-from collections import defaultdict
 from typing import Dict, Iterator, List, Optional, Tuple, Type, Union
 
 import pandas as pd
 from dimcat.base import Data, PipelineStep
-from dimcat.data.facet import Available, Facet, FacetConfig, FacetName, FeatureName
+from dimcat.data.facet import Available, Facet, FacetConfig, FacetName, StackedFacet
 from dimcat.data.loader import PLoader, infer_data_loader
 from dimcat.data.piece import PPiece
 from dimcat.dtypes import PieceID, PieceIndex
@@ -183,7 +182,7 @@ class Dataset(Data):
         for PID in self.piece_index:
             yield self.get_piece(PID)
 
-    def get_facet(self, facet: Union[FacetName, FacetConfig]) -> Facet:
+    def get_facet(self, facet: Union[FacetName, FacetConfig]) -> StackedFacet:
         """Retrieve the facet from all selected pieces, stacked.
 
         Args:
@@ -192,37 +191,14 @@ class Dataset(Data):
         Returns:
 
         """
-        config2facet_objects: Dict[FacetConfig, Dict[PieceID, Facet]] = defaultdict(
-            dict
-        )
-        for facet_obj in self.iter_facet(facet=facet):
-            facet_config = FacetConfig.from_dataclass(facet_obj)
-            config2facet_objects[facet_config][facet_obj.piece_id] = facet_obj
-        if len(config2facet_objects) > 1:
-            raise NotImplementedError(
-                f"Currently, facets with diverging configs cannot be concatenated:\n"
-                f"{set(config2facet_objects.keys())}"
-            )
-        concatenated_per_config = []
-        for config, facet_objects in config2facet_objects.items():
-            concatenated_per_config.append(
-                config.concat_method(facet_objects, names=["corpus", "piece"])
-            )
-        result = concatenated_per_config[0]
-        return result
+        stacked_facets = [loader.get_facet(facet) for loader in self.loaders]
+        return pd.concat(stacked_facets)
 
     def iter_facet(self, facet: Union[FacetName, FacetConfig]) -> Iterator[Facet]:
         """Iterate through :obj:`Facet` objects."""
-        if facet is FeatureName.TPC:
-            feature = FeatureName.TPC
-            facet = FacetName.Notes
-            for piece_obj in self.iter_pieces():
-                facet_obj = piece_obj.get_facet(facet=facet)
-                yield facet_obj.get_feature(feature)
-        else:
-            for piece_obj in self.iter_pieces():
-                facet_obj = piece_obj.get_facet(facet=facet)
-                yield facet_obj
+        for piece_obj in self.iter_pieces():
+            facet_obj = piece_obj.get_facet(facet=facet)
+            yield facet_obj
 
     def get_previous_pipeline_step(self, idx=0, of_type=None):
         """Retrieve one of the previously applied PipelineSteps, either by index or by type.
