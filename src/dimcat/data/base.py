@@ -2,14 +2,26 @@
 from __future__ import annotations
 
 import logging
+from collections import defaultdict
 from typing import Dict, Iterator, List, Optional, Tuple, Type, Union
 
 import pandas as pd
 from dimcat.base import Data, PipelineStep
-from dimcat.data.facet import Available, Facet, FacetConfig, FacetName, StackedFacet
-from dimcat.data.loader import PLoader, infer_data_loader
+from dimcat.data.facet import (
+    Available,
+    Facet,
+    FacetConfig,
+    FacetID,
+    FacetName,
+    StackedFacet,
+    StackedFacetConfig,
+    StackedFacetID,
+    get_stacked_facet_class,
+)
+from dimcat.data.loader import PLoader, StackedFacetLoader, infer_data_loader
 from dimcat.data.piece import PPiece
-from dimcat.dtypes import PieceID, PieceIndex
+from dimcat.dtypes import Configuration, PieceID, PieceIndex
+from dimcat.dtypes.base import SomeFeature
 from IPython.display import display
 from typing_extensions import Self
 
@@ -38,6 +50,8 @@ class Dataset(Data):
         """References to the individual pieces contained in the data. The exact type depends on the type of data.
         Controlled through the property :attr:`pieces` which returns a copy and cannot be modified directly.
         """
+
+        self._cache: Dict[Configuration, SomeFeature] = {}
 
         self.piece_index: PieceIndex = PieceIndex([])
         """List of PieceIDs used for accessing individual pieces of data and
@@ -182,7 +196,7 @@ class Dataset(Data):
         for PID in self.piece_index:
             yield self.get_piece(PID)
 
-    def get_facet(self, facet: Union[FacetName, FacetConfig]) -> StackedFacet:
+    def get_facet(self, facet: Union[FacetName, Configuration]) -> StackedFacet:
         """Retrieve the facet from all selected pieces, stacked.
 
         Args:
@@ -191,8 +205,42 @@ class Dataset(Data):
         Returns:
 
         """
-        stacked_facets = [loader.get_facet(facet) for loader in self.loaders]
-        return pd.concat(stacked_facets)
+        if isinstance(facet, Configuration):
+            if isinstance(facet, (StackedFacetID, FacetID)):
+                raise NotImplementedError("Not accepting IDs as of now, only configs.")
+            stacked_facet_config = StackedFacetConfig.from_dataclass(facet)
+        else:
+            facet_class = get_stacked_facet_class(facet)
+            stacked_facet_config = facet_class.get_default_config()
+        if stacked_facet_config in self._cache:
+            return self._cache[stacked_facet_config]
+        config2stacked_facet_objects: Dict[StackedFacetConfig] = defaultdict(list)
+        for loader in self.loaders:
+            stacked_facet = loader.get_facet(facet)
+            config = StackedFacetConfig.from_dataclass(stacked_facet)
+            config2stacked_facet_objects[config].append(stacked_facet)
+        if len(config2stacked_facet_objects) > 1:
+            raise NotImplementedError(
+                f"Currently, facets with diverging configs cannot be concatenated:\n"
+                f"{set(config2facet_objects.keys())}"
+            )
+        concatenated_per_config = []
+        for config, stacked_facet_objects in config2stacked_facet_objects.items():
+            stacked_facet_dfs = pd.concat(stacked_facet_objects)
+            piece_ids = []
+            for sfo in stacked_facet_objects:
+                piece_ids.extend(sfo.piece_index)
+            piece_index = PieceIndex(piece_ids)
+            facet_constructor = get_stacked_facet_class(config.dtype)
+            stacked_facet = facet_constructor.from_df(
+                df=stacked_facet_dfs, piece_index=piece_index, file_path=None
+            )
+            concatenated_per_config.append(stacked_facet)
+
+        result = concatenated_per_config[0]
+        stacked_facet_config = StackedFacetConfig.from_dataclass(result)
+        self._cache[stacked_facet_config] = result
+        return result
 
     def iter_facet(self, facet: Union[FacetName, FacetConfig]) -> Iterator[Facet]:
         """Iterate through :obj:`Facet` objects."""
@@ -258,9 +306,15 @@ class Dataset(Data):
 
 if __name__ == "__main__":
     from dimcat.data.loader import DcmlLoader
+    from ms3 import assert_dfs_equal
 
-    loader = DcmlLoader("~/corelli")
-    dataset = Dataset()
-    dataset.set_loader(loader)
-    print(dataset.piece_index)
-    print(dataset.get_facet("Notes"))
+    loader1 = DcmlLoader("~/corelli")
+    loader2 = StackedFacetLoader("~/corelli")
+    dataset1 = Dataset()
+    dataset2 = Dataset()
+    dataset1.set_loader(loader1)
+    dataset2.set_loader(loader2)
+    print(dataset1.piece_index == dataset2.piece_index)
+    print(f"DS1:\n{dataset1.get_facet('Notes')}")
+    print(f"DS2:\n{dataset2.get_facet('Notes')}")
+    assert_dfs_equal(dataset1.get_facet("Notes").df, dataset2.get_facet("Notes").df)

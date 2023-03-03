@@ -117,7 +117,7 @@ class DcmlLoader(PLoader):
         piece_ids = []
         for config, facet_objects in config2facet_objects.items():
             concatenated_per_config.append(
-                config.concat_method(facet_objects, names=["corpus", "piece"])
+                config.concat_method(facet_objects, names=["corpus", "piece", "i"])
             )
             piece_ids.extend(facet_objects.keys())
         facet_constructor = get_stacked_facet_class(facet_name)
