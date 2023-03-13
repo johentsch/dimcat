@@ -9,14 +9,21 @@ import pandas as pd
 from dimcat.base import Data, PipelineStep
 from dimcat.data.facet import (
     Available,
+    DefaultFeatureConfig,
     Facet,
     FacetConfig,
     FacetID,
     FacetName,
+    FeatureConfig,
+    FeatureID,
+    FeatureName,
     StackedFacet,
     StackedFacetConfig,
     StackedFacetID,
+    TabularFeature,
+    feature_config2facet_config,
     get_stacked_facet_class,
+    str2feature_name,
 )
 from dimcat.data.loader import PLoader, StackedFacetLoader, infer_data_loader
 from dimcat.data.piece import PPiece
@@ -62,10 +69,12 @@ class Dataset(Data):
 
         if data is not None:
             # If subclasses have a different logic of copying fields, they can override these methods
-            self._init_piece_index_from_dataset(data, **kwargs)
-            self._init_pieces_from_dataset(data, **kwargs)
-            self._init_pipeline_steps_from_dataset(data, **kwargs)
-            self._init_loaders_from_dataset(data, **kwargs)
+            self._init_piece_index_from_dataset(data)
+            self._init_pieces_from_dataset(data)
+            self._init_pipeline_steps_from_dataset(data)
+            self._init_loaders_from_dataset(data)
+        if len(kwargs) > 0:
+            self.load(**kwargs)
 
     def _init_piece_index_from_dataset(self, dataset: Dataset, **kwargs):
         self.piece_index = PieceIndex(dataset.piece_index)
@@ -222,7 +231,7 @@ class Dataset(Data):
         if len(config2stacked_facet_objects) > 1:
             raise NotImplementedError(
                 f"Currently, facets with diverging configs cannot be concatenated:\n"
-                f"{set(config2facet_objects.keys())}"
+                f"{set(config2stacked_facet_objects.keys())}"
             )
         concatenated_per_config = []
         for config, stacked_facet_objects in config2stacked_facet_objects.items():
@@ -242,11 +251,32 @@ class Dataset(Data):
         self._cache[stacked_facet_config] = result
         return result
 
+    def get_feature(self, feature: Union[FeatureName, Configuration]) -> TabularFeature:
+        if isinstance(feature, Configuration):
+            if isinstance(feature, FeatureID):
+                raise NotImplementedError("Not accepting IDs as of now, only configs.")
+            feature_config = FeatureConfig.from_dataclass(feature)
+            feature_name = feature_config.dtype
+            facet_argument = feature_config2facet_config(feature_config)
+        else:
+            feature_name = str2feature_name(feature)
+            feature_config = DefaultFeatureConfig(feature_name=feature_name)
+            facet_argument = feature_name.facet
+        stacked_facet = self.get_facet(facet_argument)
+        return stacked_facet.get_feature(feature_config)
+
     def iter_facet(self, facet: Union[FacetName, FacetConfig]) -> Iterator[Facet]:
         """Iterate through :obj:`Facet` objects."""
         for piece_obj in self.iter_pieces():
             facet_obj = piece_obj.get_facet(facet=facet)
             yield facet_obj
+
+    def iter_feature(
+        self, feature: Union[FeatureName, Configuration]
+    ) -> Iterator[TabularFeature]:
+        stacked_feature = self.get_feature(feature)
+        for piece_id, df in stacked_feature.groupby(level=[0, 1]):
+            pass
 
     def get_previous_pipeline_step(self, idx=0, of_type=None):
         """Retrieve one of the previously applied PipelineSteps, either by index or by type.

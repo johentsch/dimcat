@@ -3,8 +3,8 @@ from functools import wraps
 
 
 def config_dataclass(*decorator_args, **decorator_kwargs):
-    """This decorator corresponds and defaults, unless the keywords are overwritten,
-    to @dataclass(frozen=True, kw_only=True). All other arguments are interpreted as (field_name = Enum) mapping.
+    """This decorator corresponds and defaults to a @dataclass(frozen=True, kw_only=True),
+    unless the keywords are overwritten. All other arguments are interpreted as (field_name = Enum) mapping.
     The resulting dataclass converts all values given as keyword arguments to the given field into the respective Enum.
     This is why it defaults to kw_only=True, making sure that there are no positional arguments that could be missed.
     """

@@ -30,6 +30,7 @@ from dimcat.data.facet import (
     StackedFacetConfig,
     StackedFacetID,
     get_stacked_facet_class,
+    str2facet_name,
 )
 from dimcat.data.piece import DcmlPiece, DcmlPieceBySlicing, PPiece
 from dimcat.dtypes import Configuration, PathLike, PieceID, PieceIndex
@@ -45,7 +46,8 @@ def facet_argument2config(facet=Union[FacetName, Configuration]) -> StackedFacet
         if isinstance(config.dtype, str):
             config = replace(config, dtype=FacetName(config.dtype))
     else:
-        config = DefaultStackedFacetConfig(dtype=FacetName(facet))
+        facet_name = str2facet_name(facet)
+        config = DefaultStackedFacetConfig(dtype=facet_name)
     return config
 
 

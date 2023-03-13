@@ -84,9 +84,43 @@ class FacetName(str, Enum):
 
 
 class FeatureName(str, Enum):
-    GLOBALKEY = "globalkey"
-    LOCALKEY = "localkey"
-    TPC = "tpc"
+    facet: FacetName
+
+    def __new__(cls, name: str, facet: FacetName, description: str = "") -> FeatureName:
+        """Adds attributes to Enum members. Thanks for this solution to Redowan Nafi via
+        https://rednafi.github.io/reflections/add-additional-attributes-to-enum-members-in-python.html
+        """
+        obj = str.__new__(cls, name)
+        obj._value_ = name
+
+        obj.facet = facet
+        obj.description = description
+        return obj
+
+    GLOBALKEY = ("globalkey", FacetName.Harmonies)
+    LOCALKEY = ("localkey", FacetName.Harmonies)
+    TPC = ("tpc", FacetName.Notes)
+    CUSTOM = ("TabularFeature", None)
+
+    @classmethod
+    def _missing_(cls, value):
+        return FeatureName.CUSTOM
+
+
+def str2feature_name(name: Union[str, FeatureName]) -> FeatureName:
+    try:
+        feature_name = FeatureName(name)
+    except ValueError:
+        normalized_name = name.lower().strip("_")
+        try:
+            feature_name = FeatureName(normalized_name)
+        except ValueError:
+            raise ValueError(f"'{name}' is not a valid FeatureName.")
+    return feature_name
+
+
+class FeatureType(str, Enum):
+    TabularFeature = "TabularFeature"
 
 
 class Available(IntEnum):
@@ -108,7 +142,8 @@ class Available(IntEnum):
 
 @dataclass(frozen=True)
 class FeatureConfig(Configuration):
-    dtype: FeatureName
+    feature_name: FeatureName
+    dtype: FeatureType
     df_type: DataBackend
     unfold: bool
     interval_index: bool
@@ -121,7 +156,8 @@ class FeatureConfig(Configuration):
 class DefaultFeatureConfig(FeatureConfig):
     """Configuration for any facet."""
 
-    dtype: FeatureName
+    feature_name: FeatureName
+    dtype: FeatureType = FeatureType.TabularFeature
     df_type: DataBackend = DataBackend.PANDAS
     unfold: bool = False
     interval_index: bool = True
@@ -134,8 +170,9 @@ class DefaultFeatureConfig(FeatureConfig):
 class FeatureIdentifiers(Configuration):
     """Fields serving to identify the facet of one particular piece."""
 
-    piece_id: PieceID
-    file_path: str
+    pass
+    # piece_id: PieceID
+    # file_path: str
 
 
 @config_dataclass(dtype=FeatureName, df_type=DataBackend)
@@ -215,6 +252,13 @@ class StackedFacetID(StackedFacetConfig, StackedFacetIdentifiers):
     pass
 
 
+def feature_config2facet_config(feature: Configuration):
+    feature_config = FeatureConfig.from_dataclass(feature)
+    facet_name = feature_config.dtype.facet
+    stacked_facet_class = get_stacked_facet_class(facet_name)
+    return stacked_facet_class.get_default_config()
+
+
 # endregion Enums and Configs
 
 # region Features
@@ -226,7 +270,7 @@ class TabularFeature(FeatureID, ConfiguredDataframe):
     _default_config_type: ClassVar[Type[DefaultFeatureConfig]] = DefaultFeatureConfig
     _id_config_type: ClassVar[Type[FeatureIdentifiers]] = FeatureIdentifiers
     _id_type: ClassVar[Type[FeatureID]] = FeatureID
-    _enum_type: ClassVar[Type[Enum]] = FeatureName
+    _enum_type: ClassVar[Type[Enum]] = FeatureType
 
     @classmethod
     def from_df(
@@ -361,12 +405,43 @@ class Rests(Facet):
     pass
 
 
-@lru_cache()
-def get_facet_class(name: [FacetName, str]) -> Type[Facet]:
+def str2facet_name(name: Union[FacetName, str]) -> FacetName:
+    s2f = {
+        "measures": FacetName.Measures,
+        "notes": FacetName.Notes,
+        "rests": FacetName.Rests,
+        "notesandrests": FacetName.NotesAndRests,
+        "labels": FacetName.Labels,
+        "harmonies": FacetName.Harmonies,
+        "formlabels": FacetName.FormLabels,
+        "cadences": FacetName.Cadences,
+        "events": FacetName.Events,
+        "positions": FacetName.Positions,
+        "stackedmeasures": FacetName.StackedMeasures,
+        "stackednotes": FacetName.StackedNotes,
+        "stackedrests": FacetName.StackedRests,
+        "stackednotesandrests": FacetName.StackedNotesAndRests,
+        "stackedlabels": FacetName.StackedLabels,
+        "stackedharmonies": FacetName.StackedHarmonies,
+        "stackedformlabels": FacetName.StackedFormLabels,
+        "stackedcadences": FacetName.StackedCadences,
+        "stackedevents": FacetName.StackedEvents,
+        "stackedpositions": FacetName.StackedPositions,
+    }
     try:
         facet_name = FacetName(name)
     except ValueError:
-        raise ValueError(f"'{name}' is not a valid FacetName.")
+        normalized_name = name.lower().strip("_")
+        if normalized_name in s2f:
+            facet_name = s2f[normalized_name]
+        else:
+            raise ValueError(f"'{name}' is not a valid FacetName.")
+    return facet_name
+
+
+@lru_cache()
+def get_facet_class(name: Union[FacetName, str]) -> Type[Facet]:
+    facet_name = str2facet_name(name)
     name2facet = {
         FacetName.Measures: Measures,
         FacetName.Notes: Notes,
@@ -441,15 +516,31 @@ class StackedFacet(StackedFacetID, ConfiguredDataframe):
 
     # endregion Default methods repeated for type hints
 
-    def get_feature(self, feature: Union[str, Enum]) -> WrappedSeries:
+    def get_feature(self, feature: Union[FeatureName, FeatureConfig]) -> TabularFeature:
         """In its basic form, get one of the columns as a :obj:`WrappedSeries`.
         Subclasses may offer additional features, such as transformed columns or subsets of the table.
         """
-        series: SomeSeries = self.df[feature]
-        return WrappedSeries(series)
+        if isinstance(feature, Configuration):
+            if isinstance(feature, FeatureID):
+                raise NotImplementedError("Not accepting IDs as of now, only configs.")
+            feature_config = FeatureConfig.from_dataclass(feature)
+            feature_name = feature_config.feature_name
+        else:
+            feature_name = str2feature_name(feature)
+            feature_config = DefaultFeatureConfig(dtype=feature_name)
+        selected_columns = self.df.columns.to_list()[:6] + [feature_name.value]
+        feature = TabularFeature.from_config(
+            config=feature_config, df=self.df[selected_columns]
+        )
+        return feature
 
     def get_facet(self, piece_id: PieceID) -> Facet:
-        sliced = self.df.loc[piece_id,]
+        try:
+            sliced = self.df.loc[piece_id,]
+        except KeyError:
+            raise KeyError(
+                f"This {self.name} cannot be subscripted with '{piece_id}'. Pass a PieceID"
+            )
         facet_constructor = get_facet_class(self.dtype)
         return facet_constructor.from_id(
             config_id=self, df=sliced, piece_id=piece_id, file_path=self.file_path
@@ -508,10 +599,7 @@ class StackedPositions(StackedFacet):
 
 @lru_cache()
 def get_stacked_facet_class(name: [FacetName, str]) -> Type[StackedFacet]:
-    try:
-        facet_name = FacetName(name)
-    except ValueError:
-        raise ValueError(f"'{name}' is not a valid FacetName.")
+    facet_name = str2facet_name(name)
     name2facet = {
         FacetName.Measures: StackedMeasures,
         FacetName.Notes: StackedNotes,

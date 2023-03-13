@@ -23,6 +23,7 @@ from dimcat.data.facet import (
     FacetName,
     PFacet,
     get_facet_class,
+    str2facet_name,
 )
 from dimcat.dtypes import Configuration, PieceID
 from dimcat.utils.constants import DCML_FACETS
@@ -37,7 +38,8 @@ def facet_argument2config(facet=Union[FacetName, Configuration]) -> FacetConfig:
         if isinstance(config.dtype, str):
             config = replace(config, dtype=FacetName(config.dtype))
     else:
-        config = DefaultFacetConfig(dtype=FacetName(facet))
+        facet_name = str2facet_name(facet)
+        config = DefaultFacetConfig(dtype=FacetName(facet_name))
     return config
 
 

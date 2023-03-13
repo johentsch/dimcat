@@ -128,12 +128,15 @@ class Analyzer(AnalyzerID, ConfiguredObjectMixin, PipelineStep):
         """Static method that performs the actual computation."""
         return feature
 
-    @staticmethod
-    def fold(feature: SomeFeature, groupby: SomeSeries, **kwargs) -> SomeFeature:
+    def groupby_apply(
+        self, feature: SomeFeature, groupby: SomeSeries = None, **kwargs
+    ) -> SomeFeature:
         """Static method that performs the computation on a groupby. The value of ``groupby`` needs to be
         a Series of the same length as ``feature`` or otherwise work as positional argument to feature.groupby().
         """
-        return feature
+        if groupby is None:
+            return feature.groupby(level=[0, 1]).apply(self.compute)
+        return feature.groupby(groupby).apply(self.compute)
 
     def dispatch(self, dataset: Dataset) -> Result:
         """The logic how and to what the compute method is applied, based on the config and the Dataset."""
@@ -151,8 +154,11 @@ class Analyzer(AnalyzerID, ConfiguredObjectMixin, PipelineStep):
                 )
         if self.strategy is DispatchStrategy.GROUPBY_APPLY:
             stacked_feature = dataset.get_feature(self.analyzed_feature)
-            stacked_result = self.fold(stacked_feature)
-            return result_object(stacked_result)
+            # GOAL:
+            # stacked_result = self.groupby_apply(stacked_feature)
+            for piece_id, feat in stacked_feature.groupby(level=[0, 1]):
+                # feature_id = FeatureID
+                result_object[piece_id] = self.compute(feature=feat, **config_dict)
         return result_object
 
     @classmethod

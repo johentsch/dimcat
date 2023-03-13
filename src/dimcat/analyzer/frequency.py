@@ -51,7 +51,9 @@ class Counter(Analyzer, CounterID):
 if __name__ == "__main__":
     from dimcat import Dataset
 
-    a = Counter.from_default(analyzed_feature=FeatureName.TPC)
+    a = Counter.from_default(
+        analyzed_feature=FeatureName.TPC, strategy=DispatchStrategy.ITER_STACK
+    )
     print(a.identifier)
     dataset = Dataset()
     dataset.load("~/corelli")

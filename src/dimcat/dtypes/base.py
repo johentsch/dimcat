@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import warnings
 from abc import ABC
-from dataclasses import dataclass, fields
+from dataclasses import astuple, dataclass, fields
 from enum import Enum
 from pathlib import Path
 from typing import (
@@ -432,11 +432,11 @@ class WrappedDataframe(Generic[S]):
         instance = cls(df=df, **kwargs)
         return instance
 
-    def get_feature(self, key: str) -> WrappedSeries:
+    def get_feature(self, key: str) -> WrappedSeries[S]:
         """In its basic form, get one of the columns as a :obj:`TypedSequence`.
         Subclasses may offer additional features, such as transformed columns or subsets of the table.
         """
-        series: pd.Series = self.df[key]
+        series: SomeSeries = self.df[key]
         sequential_data = TypedSequence(series)
         return sequential_data
 
@@ -478,6 +478,9 @@ class Configuration(Data):
             logger.warning(f"Keyword argument{plural} not a field of {cls.name}.")
         init_args.update(kwargs)
         return init_args
+
+    def __eq__(self, other):
+        return astuple(self) == astuple(other)
 
 
 @dataclass(frozen=True)
@@ -533,7 +536,7 @@ class ConfiguredObjectMixin(ABC):
         if cfg_kwargs["dtype"] != cls.dtype:
             cfg_class = config.__class__.__name__
             raise TypeError(
-                f"Cannot initiate {cls.name} with {cfg_class}.dtype={config.dtype}."
+                f"Cannot initiate {cls.name} with {cfg_class}.dtype={config.dtype!r}."
             )
         return cls(**cfg_kwargs)
 
