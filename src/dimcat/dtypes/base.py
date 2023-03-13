@@ -389,7 +389,7 @@ class DataBackend(str, Enum):
 
 SomeDataframe: TypeAlias = Union[pd.DataFrame, mpd.DataFrame]
 SomeSeries: TypeAlias = Union[pd.Series, mpd.Series]
-S = TypeVar("D", bound=SomeDataframe)
+D = TypeVar("D", bound=SomeDataframe)
 S = TypeVar("S", bound=SomeSeries)
 
 
@@ -421,31 +421,28 @@ class WrappedSeries(Generic[S]):
 
 
 @dataclass(frozen=True)
-class WrappedDataframe(Generic[S]):
+class WrappedDataframe(Generic[D]):
     """Wrapper around a DataFrame."""
 
-    df: S
+    df: D
 
     @classmethod
-    def from_df(cls, df: S, **kwargs):
+    def from_df(cls, df: D, **kwargs):
         """Subclasses can implement transformational logic."""
         instance = cls(df=df, **kwargs)
         return instance
 
-    def get_feature(self, key: str) -> WrappedSeries[S]:
-        """In its basic form, get one of the columns as a :obj:`TypedSequence`.
-        Subclasses may offer additional features, such as transformed columns or subsets of the table.
-        """
-        series: SomeSeries = self.df[key]
-        sequential_data = TypedSequence(series)
-        return sequential_data
-
     def __getattr__(self, item):
-        """Enable using TabularData like a DataFrame."""
+        """Enable using WrappedDataframe like a DataFrame."""
         return getattr(self.df, item)
 
     def __len__(self) -> int:
         return len(self.df.index)
+
+    def __dir__(self) -> Iterable[str]:
+        elements = super().__dir__()
+        elements.extend(dir(self.df))
+        return sorted(elements)
 
 
 SomeFeature: TypeAlias = Union[WrappedDataframe, WrappedSeries]
@@ -577,13 +574,7 @@ class ConfiguredObjectMixin(ABC):
         return cls._default_config_type(**kwargs)
 
 
-class SentinelEnum(str, Enum):
-    ConfiguredDataframe = "ConfiguredDataframe"
-
-
 class ConfiguredDataframe(ConfiguredObjectMixin, WrappedDataframe):
-    _enum_type: ClassVar[Type[Enum]] = SentinelEnum
-
     @classmethod
     def from_df(
         cls,
