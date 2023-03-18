@@ -5,7 +5,6 @@ from typing import Collection, List, Optional, Tuple, TypeAlias, TypeVar, Union
 
 import numpy as np
 import pandas as pd
-from dimcat.base import Data, PipelineStep
 
 logger = logging.getLogger(__name__)
 
@@ -333,24 +332,3 @@ def transition_matrix(
         df.round(decimals, inplace=True)
 
     return df
-
-
-def typestrings2types(typestrings: Union[str, Collection[str]]) -> Tuple[type]:
-    """Turns one or several names of classes contained in this module into a
-    tuple of references to these classes."""
-    d_types = Data._registry
-    ps_types = PipelineStep._registry
-    if isinstance(typestrings, str):
-        typestrings = [typestrings]
-    result = []
-    for typ in typestrings:
-        if typ in d_types:
-            result.append(d_types[typ])
-        elif typ in ps_types:
-            result.append(ps_types[typ])
-        else:
-            raise KeyError(
-                f"Typestring '{typ}' does not correspond to a known subclass of PipelineStep or Data:\n"
-                f"{ps_types}\n{d_types}"
-            )
-    return tuple(result)

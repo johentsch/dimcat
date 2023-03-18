@@ -15,11 +15,11 @@ from typing import (
 
 import ms3
 import pandas as pd
-from dimcat.base import Data
+from dimcat.base import Data, typestrings2types
 from dimcat.data.base import Dataset, logger
 from dimcat.dtypes import GroupID, PieceID, SliceID, SomeID
 from dimcat.dtypes.base import SomeDataframe
-from dimcat.utils import clean_index_levels, typestrings2types
+from dimcat.utils import clean_index_levels
 from ms3._typing import ScoreFacet
 
 if TYPE_CHECKING:

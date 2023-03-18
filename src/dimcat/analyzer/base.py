@@ -9,17 +9,17 @@ from enum import Enum, auto
 from functools import reduce
 from typing import ClassVar, Dict, Iterable, Optional, Tuple, Type, TypeVar, Union
 
-from dimcat.base import Data, PipelineStep
+from dimcat.base import (
+    Configuration,
+    ConfiguredObjectMixin,
+    Data,
+    PipelineStep,
+    typestrings2types,
+)
 from dimcat.data import AnalyzedData, Dataset, GroupedData
 from dimcat.data.facet import FeatureName
-from dimcat.dtypes import Configuration, GroupID, PieceID, SomeID, WrappedDataframe
-from dimcat.dtypes.base import (
-    ConfiguredObjectMixin,
-    SomeDataframe,
-    SomeFeature,
-    SomeSeries,
-)
-from dimcat.utils import typestrings2types
+from dimcat.dtypes import GroupID, PieceID, SomeID, WrappedDataframe
+from dimcat.dtypes.base import SomeDataframe, SomeFeature, SomeSeries
 from ms3 import pretty_dict
 
 logger = logging.getLogger(__name__)

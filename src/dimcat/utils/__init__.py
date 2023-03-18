@@ -7,5 +7,4 @@ from .functions import (
     make_suffix,
     nest_level,
     transition_matrix,
-    typestrings2types,
 )

@@ -7,8 +7,8 @@ __author__ = "Digital and Cognitive Musicology Lab"
 __copyright__ = "École Polytechnique Fédérale de Lausanne"
 __license__ = "GPL-3.0-or-later"
 
+from dimcat.base import typestrings2types
 from dimcat.data import GroupedData
-from dimcat.utils import typestrings2types
 
 
 def assert_pipeline_dependency_raise(analyzer_obj, data):

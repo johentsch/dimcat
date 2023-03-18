@@ -13,7 +13,7 @@ from typing import (
 )
 
 import ms3
-from dimcat.base import Data
+from dimcat.base import Configuration, Data
 from dimcat.data.facet import (
     Available,
     DefaultFacetConfig,
@@ -25,7 +25,7 @@ from dimcat.data.facet import (
     get_facet_class,
     str2facet_name,
 )
-from dimcat.dtypes import Configuration, PieceID
+from dimcat.dtypes import PieceID
 from dimcat.utils.constants import DCML_FACETS
 
 if TYPE_CHECKING:

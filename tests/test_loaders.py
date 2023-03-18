@@ -3,9 +3,9 @@ from enum import Enum
 from typing import Type, Union
 
 import pytest
+from dimcat.base import ConfiguredDataframe
 from dimcat.data.facet import get_facet_class
 from dimcat.data.loader import DcmlLoader
-from dimcat.dtypes.base import ConfiguredDataframe
 
 
 @pytest.fixture()
@@ -25,7 +25,7 @@ def default_methods_test(
     facet_df = configured_dataframe.df
     facet_config = configured_dataframe.config
     facet1 = constructor.from_config(
-        df=facet_df, config=facet_config, identifiers=facet_id
+        df=facet_df, config=facet_config, identifier=facet_id
     )
     assert facet1 == configured_dataframe
     facet2 = constructor.from_id(facet_id, df=facet_df)

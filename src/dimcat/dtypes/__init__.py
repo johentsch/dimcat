@@ -1,6 +1,5 @@
 from .base import (
     AnalyzerName,
-    Configuration,
     GroupID,
     PathLike,
     PieceID,

@@ -8,8 +8,9 @@ from dimcat.analyzer.base import (
     ResultName,
     UnitOfAnalysis,
 )
+from dimcat.base import Configuration
 from dimcat.data.facet import FeatureName
-from dimcat.dtypes.base import Configuration, WrappedSeries
+from dimcat.dtypes.base import WrappedSeries
 
 
 @dataclass(frozen=True)

@@ -19,6 +19,7 @@ from typing import (
 
 import ms3
 import pandas as pd
+from dimcat.base import Configuration
 from dimcat.data.facet import (
     Available,
     DefaultStackedFacetConfig,
@@ -33,7 +34,7 @@ from dimcat.data.facet import (
     str2facet_name,
 )
 from dimcat.data.piece import DcmlPiece, DcmlPieceBySlicing, PPiece
-from dimcat.dtypes import Configuration, PathLike, PieceID, PieceIndex
+from dimcat.dtypes import PathLike, PieceID, PieceIndex
 from dimcat.utils.constants import DCML_FACETS
 from dimcat.utils.functions import resolve_dir
 

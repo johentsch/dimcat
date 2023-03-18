@@ -19,9 +19,8 @@ from typing import (
 )
 
 import pandas as pd
+from dimcat.base import Configuration, ConfiguredDataframe
 from dimcat.dtypes.base import (
-    Configuration,
-    ConfiguredDataframe,
     DataBackend,
     PieceID,
     SomeDataframe,
@@ -211,10 +210,10 @@ class FacetIdentifiers(Configuration):
 
 
 @config_dataclass(dtype=FacetName, df_type=DataBackend)
-class FacetID(FacetConfig, FacetIdentifiers):
+class FacetID(FacetConfig):
     """Config + Identifier"""
 
-    pass
+    identifier: Union[StackedFacetIdentifiers, FacetIdentifiers]
 
 
 @dataclass(frozen=True)
@@ -650,7 +649,7 @@ if __name__ == "__main__":
         file_path=file_path,
     )
     f_id = FacetIdentifiers(**id_dict)
-    harmonies2 = Harmonies.from_config(df=df, config=f_cfg, identifiers=f_id)
+    harmonies2 = Harmonies.from_config(df=df, config=f_cfg, identifier=f_id)
     assert harmonies1 == harmonies2
     harmonies3 = Harmonies.from_id(config_id=harmonies2, df=df)
     assert harmonies2 == harmonies3

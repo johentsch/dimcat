@@ -6,7 +6,7 @@ from collections import defaultdict
 from typing import Dict, Iterator, List, Optional, Tuple, Type, Union
 
 import pandas as pd
-from dimcat.base import Data, PipelineStep
+from dimcat.base import Configuration, Data, PipelineStep
 from dimcat.data.facet import (
     Available,
     DefaultFeatureConfig,
@@ -27,7 +27,7 @@ from dimcat.data.facet import (
 )
 from dimcat.data.loader import PLoader, StackedFacetLoader, infer_data_loader
 from dimcat.data.piece import PPiece
-from dimcat.dtypes import Configuration, PieceID, PieceIndex
+from dimcat.dtypes import PieceID, PieceIndex
 from dimcat.dtypes.base import SomeFeature
 from IPython.display import display
 from typing_extensions import Self
@@ -158,8 +158,9 @@ class Dataset(Data):
         Args:
             directory: The path(s) to all the data to load.
             loader:
-                Loader class to be initialized with the keyword arguments ``directory`` and ``**kwargs``.
-                If none is specified, DiMCAT will call :func:`infer_data_loader` on each directory.
+                Loader class to be initialized with the keyword arguments ``directory``
+                and ``**kwargs``. If none is specified, DiMCAT will call
+                :func:`infer_data_loader` on each directory.
             **kwargs:
                 Keyword arguments that the specified loader class accepts. If the loader class is to be inferred,
                 only arguments specified in :meth:`.dtypes.PLoader.__init__` are safe.
