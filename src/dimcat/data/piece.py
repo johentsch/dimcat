@@ -20,6 +20,7 @@ from dimcat.data.facet import (
     Facet,
     FacetConfig,
     FacetID,
+    FacetIdentifiers,
     FacetName,
     PFacet,
     get_facet_class,
@@ -152,9 +153,8 @@ class DcmlPiece(Data):
     def get_facet(self, facet=Union[FacetName, Configuration]) -> Facet:
         config = facet_argument2config(facet)
         availability = self.check_facet_availability(config)
-        facet_id = FacetID.from_dataclass(
-            config=config, piece_id=self.piece_id, file_path=""
-        )
+        identifier = FacetIdentifiers(piece_id=self.piece_id, file_path="")
+        facet_id = FacetID.from_dataclass(config=config, identifier=identifier)
         if availability is Available.AVAILABLE:
             keyword = self._facet2internal_keyword(config.dtype)
             file, facet_df = self.source_object.get_parsed(

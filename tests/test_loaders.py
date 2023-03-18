@@ -30,7 +30,7 @@ def default_methods_test(
     assert facet1 == configured_dataframe
     facet2 = constructor.from_id(facet_id, df=facet_df)
     assert facet2 == configured_dataframe
-    facet3 = constructor.from_default(df=facet_df, identifiers=facet_id)
+    facet3 = constructor.from_default(df=facet_df, identifier=facet_id)
     assert facet3 == configured_dataframe
     facet4 = constructor.from_df(df=facet_df, identifiers=facet_id)
     assert facet4 == configured_dataframe

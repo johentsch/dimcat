@@ -154,7 +154,9 @@ class TypedSequence(Sequence[T_co]):
         converter: Optional[Callable[[C], T_co]] = None,
         **kwargs,
     ):
-        if not isinstance(values, (Sequence, np.ndarray, pd.Series, WrappedSeries)):
+        if not isinstance(
+            values, (Sequence, np.ndarray, pd.Series, pd.Index, WrappedSeries)
+        ):
             raise TypeError(
                 f"{cls.__name__}: The first argument needs to be a Sequence, not {type(values)}."
             )

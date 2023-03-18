@@ -282,7 +282,7 @@ class TabularFeature(FeatureID, ConfiguredDataframe):
         as :obj:`FeatureIdentifiers`, or as keyword arguments. In addition, keyword arguments can be used to override
         values in the given configuration.
         """
-        return cls.from_default(df=df, identifiers=identifiers, **kwargs)
+        return cls.from_default(df=df, identifier=identifiers, **kwargs)
 
 
 # endregion Features
@@ -307,7 +307,7 @@ class Facet(FacetID, ConfiguredDataframe):
         return self._config_type.from_dataclass(self)
 
     @property
-    def identifier(self) -> FacetID:
+    def ID(self) -> FacetID:
         return self._id_type.from_dataclass(self)
 
     @classmethod
@@ -321,7 +321,7 @@ class Facet(FacetID, ConfiguredDataframe):
         as :obj:`FacetIdentifiers`, or as keyword arguments. In addition, keyword arguments can be used to override
         values in the given configuration.
         """
-        return cls.from_default(df=df, identifiers=identifiers, **kwargs)
+        return cls.from_default(df=df, identifier=identifiers, **kwargs)
 
     @classmethod
     def get_default_config(cls, **kwargs) -> DefaultFacetConfig:
@@ -336,6 +336,10 @@ class Facet(FacetID, ConfiguredDataframe):
         """
         series: SomeSeries = self.df[feature]
         return WrappedSeries(series)
+
+    @property
+    def piece_id(self) -> PieceID:
+        return self.identifier.piece_id
 
 
 @dataclass(frozen=True)
@@ -492,7 +496,7 @@ class StackedFacet(StackedFacetID, ConfiguredDataframe):
         return self._config_type.from_dataclass(self)
 
     @property
-    def identifier(self) -> StackedFacetID:
+    def ID(self) -> StackedFacetID:
         return self._id_type.from_dataclass(self)
 
     @classmethod
@@ -506,7 +510,7 @@ class StackedFacet(StackedFacetID, ConfiguredDataframe):
         as :obj:`FacetIdentifiers`, or as keyword arguments. In addition, keyword arguments can be used to override
         values in the given configuration.
         """
-        return cls.from_default(df=df, identifiers=identifiers, **kwargs)
+        return cls.from_default(df=df, identifier=identifiers, **kwargs)
 
     @classmethod
     def get_default_config(cls, **kwargs) -> DefaultStackedFacetConfig:

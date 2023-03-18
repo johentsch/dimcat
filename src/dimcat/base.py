@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Any, ClassVar, Dict, Optional, Tuple, Type, Union
 
 from dimcat.dtypes import WrappedDataframe
-from dimcat.dtypes.base import SomeDataframe, logger
+from dimcat.dtypes.base import SomeDataframe
 from typing_extensions import Self
 
 
@@ -110,22 +110,31 @@ class Configuration(Data):
         return cls(**init_args)
 
     @classmethod
+    def from_dict(cls, config: dict, **kwargs) -> Self:
+        """This class methods copies the fields it needs from another config-like dataclass."""
+        if not isinstance(config, dict):
+            raise TypeError(
+                f"Expected a dictionary, received a {type(config)!r} instead."
+            )
+        config = dict(config)
+        config.update(kwargs)
+        field_names = [field.name for field in fields(cls) if field.init]
+        init_args = {key: value for key, value in config.items() if key in field_names}
+        return cls(**init_args)
+
+    @classmethod
     def dict_from_dataclass(cls, config: Configuration, **kwargs) -> Dict:
         """This class methods copies the fields it needs from another config-like dataclass."""
         init_args: Dict[str, Any] = {}
         field_names = []
         for config_field in fields(cls):
-            field_names.append(config_field.name)
-            value = getattr(config, config_field.name, None)
-            if value is None:
+            if not config_field.init:
                 continue
-            init_args[config_field.name] = value
-        if any(kw not in field_names for kw in kwargs.keys()):
-            foreign = [kw for kw in kwargs.keys() if kw not in field_names]
-            plural = (
-                f"s '{', '.join(foreign)}'" if len(foreign) > 1 else f" '{foreign[0]}'"
-            )
-            logger.warning(f"Keyword argument{plural} not a field of {cls.name}.")
+            field_name = config_field.name
+            field_names.append(config_field.name)
+            if not hasattr(config, field_name):
+                continue
+            init_args[field_name] = getattr(config, field_name)
         init_args.update(kwargs)
         return init_args
 
@@ -139,7 +148,6 @@ class ConfiguredObjectMixin(ABC):
 
     _config_type: ClassVar[Type[Configuration]]
     _default_config_type: ClassVar[Type[Configuration]]
-    _id_config_type: ClassVar[Type[Configuration]]
     _id_type: ClassVar[Type[Configuration]]
     _enum_type: ClassVar[Type[Enum]]
 
@@ -153,7 +161,7 @@ class ConfiguredObjectMixin(ABC):
         return self._config_type.from_dataclass(self)
 
     @property
-    def identifier(self) -> Configuration:
+    def ID(self) -> Configuration:
         return self._id_type.from_dataclass(self)
 
     @classmethod
@@ -175,47 +183,22 @@ class ConfiguredObjectMixin(ABC):
         as :obj:`FeatureIdentifiers`, or as keyword arguments. In addition, keyword arguments can be used to override
         values in the given configuration.
         """
-        cfg_kwargs = cls._config_type.dict_from_dataclass(config)
-        if identifier is not None:
-            if hasattr(cls, "_id_type"):
-                warnings.warn(
-                    f"{cls.name} objects need no identifier since their configuration makes them unique."
-                )
-            else:
-                id_kwargs = cls._id_config_type.dict_from_dataclass(identifier)
-                cfg_kwargs.update(id_kwargs)
-        cfg_kwargs.update(kwargs)
-        if cfg_kwargs["dtype"] != cls.dtype:
-            cfg_class = config.__class__.__name__
-            raise TypeError(
-                f"Cannot initiate {cls.name} with {cfg_class}.dtype={config.dtype!r}."
+        cfg_kwargs = cls._config_type.dict_from_dataclass(config, **kwargs)
+        if identifier is not None and not hasattr(cls, "_id_type"):
+            warnings.warn(
+                f"{cls.name} objects need no identifier since their configuration makes them unique."
             )
-        return cls(**cfg_kwargs)
+        return cls(**cfg_kwargs, identifier=identifier)
 
     @classmethod
     def from_default(
         cls,
-        identifiers: Optional[Configuration] = None,
+        identifier: Optional[Configuration] = None,
         **kwargs,
     ) -> Self:
         """Create an instance from the default :obj:`Configuration`, which can be modified using keyword arguments."""
-        if len(kwargs) == 0:
-            config = cls.get_default_config()
-            return cls.from_config(config=config, identifier=identifiers)
-        if cls._id_config_type == Configuration:
-            # this class takes no special identifiers, so the kwargs need no splitting
-            config = cls.get_default_config(**kwargs)
-            return cls.from_config(config=config, identifier=identifiers)
-        # split id_kwargs from cfg_kwargs
-        cfg_field_names = [fld.name for fld in fields(cls._config_type)]
-        cfg_kwargs = {kw: arg for kw, arg in kwargs.items() if kw in cfg_field_names}
-        config = cls.get_default_config(**cfg_kwargs)
-        if len(kwargs) > len(cfg_kwargs):
-            id_kwargs = {
-                kw: arg for kw, arg in kwargs.items() if kw not in cfg_field_names
-            }
-            return cls.from_config(config=config, identifier=identifiers, **id_kwargs)
-        return cls.from_config(config=config, identifier=identifiers)
+        config = cls.get_default_config(**kwargs)
+        return cls.from_config(config=config, identifier=identifier, **kwargs)
 
     @classmethod
     def from_id(cls, config_id: Configuration, **kwargs) -> Self:
@@ -227,7 +210,7 @@ class ConfiguredObjectMixin(ABC):
     def get_default_config(cls, **kwargs) -> Configuration:
         if not isinstance(cls.dtype, str):
             kwargs["dtype"] = cls.dtype
-        return cls._default_config_type(**kwargs)
+        return cls._default_config_type.from_dict(kwargs)
 
 
 @dataclass(frozen=True)
@@ -243,4 +226,4 @@ class ConfiguredDataframe(ConfiguredObjectMixin, WrappedDataframe):
         as :obj:`FeatureIdentifiers`, or as keyword arguments. In addition, keyword arguments can be used to override
         values in the given configuration.
         """
-        return cls.from_default(df=df, identifiers=identifiers, **kwargs)
+        return cls.from_default(df=df, identifier=identifiers, **kwargs)
