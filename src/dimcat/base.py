@@ -278,6 +278,10 @@ class Stack(StackID, ConfiguredDataframe):
     _default_config_type: ClassVar[Type[Configuration]] = DefaultStackConfig
     _id_type: ClassVar[Type[Configuration]] = StackID
 
+    @property
+    def dtype(self) -> Enum:
+        return self.configuration.dtype
+
     @classmethod
     def from_list(
         cls,
