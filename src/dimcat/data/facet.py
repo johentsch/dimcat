@@ -275,14 +275,14 @@ class TabularFeature(FeatureID, ConfiguredDataframe):
     def from_df(
         cls,
         df: SomeDataframe,
-        identifiers: Optional[FeatureIdentifiers] = None,
+        identifier: Optional[FeatureIdentifiers] = None,
         **kwargs,
     ) -> Self:
         """Create a Feature from a dataframe and a :obj:`Configuration`. The required identifiers can be given either
         as :obj:`FeatureIdentifiers`, or as keyword arguments. In addition, keyword arguments can be used to override
         values in the given configuration.
         """
-        return cls.from_default(df=df, identifier=identifiers, **kwargs)
+        return cls.from_default(df=df, identifier=identifier, **kwargs)
 
 
 # endregion Features
@@ -314,14 +314,14 @@ class Facet(FacetID, ConfiguredDataframe):
     def from_df(
         cls,
         df: SomeDataframe,
-        identifiers: Optional[FacetIdentifiers] = None,
+        identifier: Optional[FacetIdentifiers] = None,
         **kwargs,
     ) -> Self:
         """Create a Facet from a dataframe and a :obj:`Configuration`. The required identifiers can be given either
         as :obj:`FacetIdentifiers`, or as keyword arguments. In addition, keyword arguments can be used to override
         values in the given configuration.
         """
-        return cls.from_default(df=df, identifier=identifiers, **kwargs)
+        return cls.from_default(df=df, identifier=identifier, **kwargs)
 
     @classmethod
     def get_default_config(cls, **kwargs) -> DefaultFacetConfig:
@@ -503,14 +503,14 @@ class StackedFacet(StackedFacetID, ConfiguredDataframe):
     def from_df(
         cls,
         df: SomeDataframe,
-        identifiers: Optional[StackedFacetIdentifiers] = None,
+        identifier: Optional[StackedFacetIdentifiers] = None,
         **kwargs,
     ) -> Self:
         """Create a Facet from a dataframe and a :obj:`Configuration`. The required identifiers can be given either
         as :obj:`FacetIdentifiers`, or as keyword arguments. In addition, keyword arguments can be used to override
         values in the given configuration.
         """
-        return cls.from_default(df=df, identifier=identifiers, **kwargs)
+        return cls.from_default(df=df, identifier=identifier, **kwargs)
 
     @classmethod
     def get_default_config(cls, **kwargs) -> DefaultStackedFacetConfig:

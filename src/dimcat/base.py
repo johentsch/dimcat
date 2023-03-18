@@ -4,11 +4,25 @@ import warnings
 from abc import ABC, abstractmethod
 from dataclasses import astuple, dataclass, fields
 from enum import Enum
-from typing import Any, ClassVar, Dict, Optional, Tuple, Type, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    Collection,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+)
 
-from dimcat.dtypes import WrappedDataframe
-from dimcat.dtypes.base import SomeDataframe
+from dimcat.dtypes.base import PieceID, SomeDataframe, WrappedDataframe
+from dimcat.dtypes.sequence import PieceIndex
 from typing_extensions import Self
+
+if TYPE_CHECKING:
+    from dimcat.data.facet import FacetConfig, FeatureConfig
 
 
 class Data(ABC):
@@ -143,6 +157,20 @@ class Configuration(Data):
 
 
 @dataclass(frozen=True)
+class PieceIdentifier(Configuration):
+    """Identifies one piece and, in combination with a Configuration, information pertaining to it."""
+
+    piece_id: PieceID
+
+
+@dataclass(frozen=True)
+class PieceStackIdentifier(Configuration):
+    """Identifies several pieces and, in combination with a Configuration, information pertaining to them."""
+
+    piece_index: PieceIndex
+
+
+@dataclass(frozen=True)
 class ConfiguredObjectMixin(ABC):
     """"""
 
@@ -219,11 +247,135 @@ class ConfiguredDataframe(ConfiguredObjectMixin, WrappedDataframe):
     def from_df(
         cls,
         df: SomeDataframe,
-        identifiers: Optional[Configuration] = None,
+        identifier: Optional[Configuration] = None,
         **kwargs,
     ) -> Self:
         """Create a Feature from a dataframe and a :obj:`Configuration`. The required identifiers can be given either
         as :obj:`FeatureIdentifiers`, or as keyword arguments. In addition, keyword arguments can be used to override
         values in the given configuration.
         """
-        return cls.from_default(df=df, identifier=identifiers, **kwargs)
+        return cls.from_default(df=df, identifier=identifier, **kwargs)
+
+
+@dataclass(frozen=True)
+class StackConfig(Configuration):
+    configuration: Configuration
+
+
+@dataclass(frozen=True)
+class DefaultStackConfig(StackConfig):
+    configuration: Configuration
+
+
+@dataclass(frozen=True)
+class StackID(StackConfig):
+    identifier: PieceStackIdentifier
+
+
+@dataclass(frozen=True)
+class Stack(StackID, ConfiguredDataframe):
+    _config_type: ClassVar[Type[Configuration]] = StackConfig
+    _default_config_type: ClassVar[Type[Configuration]] = DefaultStackConfig
+    _id_type: ClassVar[Type[Configuration]] = StackID
+
+    @classmethod
+    def from_list(
+        cls,
+        list_of_dataframes: List[Union[SomeDataframe, ConfiguredDataframe]],
+        configuration: Optional[Union[FacetConfig, FeatureConfig]] = None,
+        identifier: Optional[PieceStackIdentifier] = None,
+    ) -> Self:
+        if len(list_of_dataframes) == 0:
+            raise ValueError("Cannot create empty stack.")
+        first_element = list_of_dataframes[0]
+        if configuration is None:
+            try:
+                configuration = first_element.config
+            except Exception:
+                raise ValueError(
+                    f"{type(first_element)!r} is not a configured object and no configuration was given."
+                )
+        if identifier is None:
+            try:
+                piece_index = PieceIndex([df.piece_id for df in list_of_dataframes])
+            except Exception:
+                piece_ids = []
+                for df in list_of_dataframes:
+                    try:
+                        piece_ids.append(df.piece_id)
+                    except Exception:
+                        raise ValueError(
+                            f"{type(df)!r} does not have a piece_id and no identifier was given."
+                        )
+                    id_types = set(type(piece_id) for piece_id in piece_ids)
+                    raise ValueError(
+                        f"Unable to create PieceIndex from types {id_types}"
+                    )
+            identifier = PieceStackIdentifier(piece_index=piece_index)
+        else:
+            n_ids, n_dfs = len(identifier.piece_index), len(list_of_dataframes)
+            if n_ids == n_dfs:
+                pass  # ToDo: verify given IDs against those of the ConfigurerDataframes or SomeDataframe.index
+            elif n_ids > n_dfs:
+                raise ValueError(
+                    f"Given identifier has {n_ids} PieceIDs but the given list has only {n_dfs} frames."
+                )
+        concat_method = configuration.concat_method
+        concatenated_frames = concat_method(list_of_dataframes)
+        return cls.from_df(
+            df=concatenated_frames, configuration=configuration, identifier=identifier
+        )
+
+    @classmethod
+    def from_df(
+        cls,
+        df: Union[SomeDataframe, ConfiguredDataframe],
+        configuration: Optional[Union[FacetConfig, FeatureConfig]] = None,
+        identifier: Optional[PieceStackIdentifier] = None,
+        **kwargs,
+    ) -> Self:
+        if configuration is None:
+            try:
+                configuration = df.config
+            except AttributeError:
+                raise ValueError(
+                    f"{type(df)!r} is not a configured object and no configuration was given."
+                )
+        if identifier is None:
+            if hasattr(df, "identifier") and isinstance(df, ConfiguredDataframe):
+                identifier = df.identifier
+            else:
+                idx = df.index
+                n_levels = idx.nlevels
+                if n_levels < 2:
+                    raise ValueError(
+                        "The given DataFrame has less than two levels and no identifier was given."
+                    )
+                while idx.nlevels > 2:
+                    idx = idx.droplevel(-1)
+                piece_index = PieceIndex(idx.unique())
+                identifier = PieceStackIdentifier(piece_index=piece_index)
+        return cls.from_default(
+            df=df, configuration=configuration, identifier=identifier, **kwargs
+        )
+
+
+def typestrings2types(typestrings: Union[str, Collection[str]]) -> Tuple[type]:
+    """Turns one or several names of classes contained in this module into a
+    tuple of references to these classes."""
+    d_types = Data._registry
+    ps_types = PipelineStep._registry
+    if isinstance(typestrings, str):
+        typestrings = [typestrings]
+    result = []
+    for typ in typestrings:
+        if typ in d_types:
+            result.append(d_types[typ])
+        elif typ in ps_types:
+            result.append(ps_types[typ])
+        else:
+            raise KeyError(
+                f"Typestring '{typ}' does not correspond to a known subclass of PipelineStep or Data:\n"
+                f"{ps_types}\n{d_types}"
+            )
+    return tuple(result)

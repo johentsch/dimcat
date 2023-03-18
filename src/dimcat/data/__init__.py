@@ -1,5 +1,5 @@
-from .base import Dataset
-from .processed import (
+from dimcat.data.base import Dataset
+from dimcat.data.processed import (
     AnalyzedData,
     AnalyzedDataset,
     AnalyzedGroupedDataset,

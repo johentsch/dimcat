@@ -3,9 +3,8 @@ from __future__ import annotations
 import logging
 from typing import Iterable, List, Literal, Optional, Sequence, Tuple, Union, overload
 
+from dimcat.dtypes.base import PieceID, T_co, TypedSequence, WrappedDataframe
 from dimcat.utils import grams, transition_matrix
-
-from .base import PieceID, T_co, TypedSequence, WrappedDataframe
 
 # region n-grams
 
