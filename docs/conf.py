@@ -80,9 +80,9 @@ extensions = [
 
 # MyST-NB configuration https://myst-nb.readthedocs.io/en/latest/configuration.html
 nb_execution_timeout = 180
-nb_execution_raise_on_error = True
+nb_execution_raise_on_error = False
 nb_execution_show_tb = True
-nb_execution_mode = "off"
+nb_execution_mode = "auto"
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
@@ -98,7 +98,7 @@ master_doc = "index"
 
 # General information about the project.
 project = "DiMCAT"
-copyright = "2023, Johannes Hentschel @ DCML @ EPFL"
+copyright = "2023, Digital and Cognitive Musicology Lab @ École Polytechnique Fédérale de Lausanne"
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
