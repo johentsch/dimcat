@@ -105,6 +105,42 @@ class FacetName(str, Enum):
     StackedRests = "StackedRests"
 
 
+def str2facet_name(name: Union[FacetName, str]) -> FacetName:
+    s2f = {
+        "cadences": FacetName.Cadences,
+        "chordsymbols": FacetName.ChordSymbols,
+        "events": FacetName.Events,
+        "formlabels": FacetName.FormLabels,
+        "harmonies": FacetName.Harmonies,
+        "markup": FacetName.Markup,
+        "metadata": FacetName.Metadata,
+        "measures": FacetName.Measures,
+        "notes": FacetName.Notes,
+        "notesandrests": FacetName.NotesAndRests,
+        "phrases": FacetName.Phrases,
+        "rests": FacetName.Rests,
+        "stackedcadences": FacetName.StackedCadences,
+        "stackedchordsymbols": FacetName.StackedChordSymbols,
+        "stackedevents": FacetName.StackedEvents,
+        "stackedformlabels": FacetName.StackedFormLabels,
+        "stackedharmonies": FacetName.StackedHarmonies,
+        "stackedmarkup": FacetName.StackedMarkup,
+        "stackedmeasures": FacetName.StackedMeasures,
+        "stackednotes": FacetName.StackedNotes,
+        "stackednotesandrests": FacetName.StackedNotesAndRests,
+        "stackedrests": FacetName.StackedRests,
+    }
+    try:
+        facet_name = FacetName(name)
+    except ValueError:
+        normalized_name = name.lower().strip("_")
+        if normalized_name in s2f:
+            facet_name = s2f[normalized_name]
+        else:
+            raise ValueError(f"'{name}' is not a valid FacetName.")
+    return facet_name
+
+
 class FeatureName(str, Enum):
     facet: FacetName
 
@@ -123,13 +159,13 @@ class FeatureName(str, Enum):
     GLOBALKEY = ("globalkey", FacetName.Harmonies)
     LOCALKEY = ("localkey", FacetName.Harmonies)
     PEDAL_POINT = ("pedal", FacetName.Harmonies)
-    RN = ("chord", FacetName.Harmonies)
+    ROMAN = ("chord", FacetName.Harmonies)
     SPECIAL_CHORD = ("special", FacetName.Harmonies)
-    RN_ROOT = ("numeral", FacetName.Harmonies)
+    ROMAN_ROOT = ("numeral", FacetName.Harmonies)
     INVERSION = ("figbass", FacetName.Harmonies)
     MODIFICATIONS = ("changes", FacetName.Harmonies)
     RELATIVEROOT = ("relativeroot", FacetName.Harmonies)
-    CADENCE = ("cadence", FacetName.Cadences)
+    CADENCE = ("cadence", FacetName.Harmonies)
     # PHRASEEND = ("phraseend", FacetName.Harmonies)
     CHORD_TYPE = ("chord_type", FacetName.Harmonies)
     TPC = ("tpc", FacetName.Notes)
@@ -146,6 +182,13 @@ def get_facet2feature_dict() -> Dict[FacetName, FeatureName]:
     for feature_name in FeatureName:
         facet2feature[feature_name.facet].append(feature_name)
     return dict(facet2feature)
+
+
+@lru_cache()
+def facet2available_features(facet_name: FacetName) -> List[FeatureName]:
+    facet_name = str2facet_name(facet_name)
+    facet2features = get_facet2feature_dict()
+    return facet2features[facet_name]
 
 
 def str2feature_name(name: Union[str, FeatureName]) -> FeatureName:
@@ -374,23 +417,42 @@ class Facet(FacetID, FacetMixin):
 
 @dataclass(frozen=True)
 class CadencesMixin(ABC):
-    pass
+    _facet_name: ClassVar[FacetName] = FacetName.Cadences
+    _available_features: ClassVar[List[FeatureName]] = facet2available_features(
+        FacetName.Cadences
+    )
+
+
+@dataclass(frozen=True)
+class ChordSymbolsMixin(ABC):
+    _facet_name: ClassVar[FacetName] = FacetName.ChordSymbols
+    _available_features: ClassVar[List[FeatureName]] = facet2available_features(
+        FacetName.ChordSymbols
+    )
 
 
 @dataclass(frozen=True)
 class EventsMixin(ABC):
-    pass
+    _facet_name: ClassVar[FacetName] = FacetName.Events
+    _available_features: ClassVar[List[FeatureName]] = facet2available_features(
+        FacetName.Events
+    )
 
 
 @dataclass(frozen=True)
 class FormLabelsMixin(ABC):
-    pass
+    _facet_name: ClassVar[FacetName] = FacetName.FormLabels
+    _available_features: ClassVar[List[FeatureName]] = facet2available_features(
+        FacetName.FormLabels
+    )
 
 
 @dataclass(frozen=True)
 class HarmoniesMixin(ABC):
-    facet_name: ClassVar[FacetName] = FacetName.Harmonies
-    _available_features: ClassVar[List[FeatureName]]
+    _facet_name: ClassVar[FacetName] = FacetName.Harmonies
+    _available_features: ClassVar[List[FeatureName]] = facet2available_features(
+        FacetName.Harmonies
+    )
 
     @cached_property
     def globalkey(self) -> str:
@@ -409,22 +471,26 @@ class HarmoniesMixin(ABC):
 
 
 @dataclass(frozen=True)
-class ChordSymbolsMixin(ABC):
-    pass
-
-
-@dataclass(frozen=True)
 class MarkupMixin(ABC):
-    pass
+    _facet_name: ClassVar[FacetName] = FacetName.Markup
+    _available_features: ClassVar[List[FeatureName]] = facet2available_features(
+        FacetName.Markup
+    )
 
 
 @dataclass(frozen=True)
 class MeasuresMixin(ABC):
-    pass
+    _facet_name: ClassVar[FacetName] = FacetName.Measures
+    _available_features: ClassVar[List[FeatureName]] = facet2available_features(
+        FacetName.Measures
+    )
 
 
 class NotesMixin(ABC):
-    facet_name = FacetName.Notes
+    _facet_name: ClassVar[FacetName] = FacetName.Notes
+    _available_features: ClassVar[List[FeatureName]] = facet2available_features(
+        FacetName.Notes
+    )
 
     def tpc(self) -> WrappedSeries:
         series = self.get_feature(FeatureName.TPC)
@@ -433,17 +499,26 @@ class NotesMixin(ABC):
 
 @dataclass(frozen=True)
 class NotesAndRestsMixin(ABC):
-    pass
+    _facet_name: ClassVar[FacetName] = FacetName.NotesAndRests
+    _available_features: ClassVar[List[FeatureName]] = facet2available_features(
+        FacetName.NotesAndRests
+    )
 
 
 @dataclass(frozen=True)
 class PhrasesMixin(ABC):
-    pass
+    _facet_name: ClassVar[FacetName] = FacetName.Phrases
+    _available_features: ClassVar[List[FeatureName]] = facet2available_features(
+        FacetName.Phrases
+    )
 
 
 @dataclass(frozen=True)
 class RestsMixin(ABC):
-    pass
+    _facet_name: ClassVar[FacetName] = FacetName.Rests
+    _available_features: ClassVar[List[FeatureName]] = facet2available_features(
+        FacetName.Rests
+    )
 
 
 @dataclass(frozen=True)
@@ -504,42 +579,6 @@ class Phrases(Facet, PhrasesMixin):
 @dataclass(frozen=True)
 class Rests(Facet, RestsMixin):
     pass
-
-
-def str2facet_name(name: Union[FacetName, str]) -> FacetName:
-    s2f = {
-        "cadences": FacetName.Cadences,
-        "chordsymbols": FacetName.ChordSymbols,
-        "events": FacetName.Events,
-        "formlabels": FacetName.FormLabels,
-        "harmonies": FacetName.Harmonies,
-        "markup": FacetName.Markup,
-        "metadata": FacetName.Metadata,
-        "measures": FacetName.Measures,
-        "notes": FacetName.Notes,
-        "notesandrests": FacetName.NotesAndRests,
-        "phrases": FacetName.Phrases,
-        "rests": FacetName.Rests,
-        "stackedcadences": FacetName.StackedCadences,
-        "stackedchordsymbols": FacetName.StackedChordSymbols,
-        "stackedevents": FacetName.StackedEvents,
-        "stackedformlabels": FacetName.StackedFormLabels,
-        "stackedharmonies": FacetName.StackedHarmonies,
-        "stackedmarkup": FacetName.StackedMarkup,
-        "stackedmeasures": FacetName.StackedMeasures,
-        "stackednotes": FacetName.StackedNotes,
-        "stackednotesandrests": FacetName.StackedNotesAndRests,
-        "stackedrests": FacetName.StackedRests,
-    }
-    try:
-        facet_name = FacetName(name)
-    except ValueError:
-        normalized_name = name.lower().strip("_")
-        if normalized_name in s2f:
-            facet_name = s2f[normalized_name]
-        else:
-            raise ValueError(f"'{name}' is not a valid FacetName.")
-    return facet_name
 
 
 @lru_cache()

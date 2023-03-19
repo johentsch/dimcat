@@ -135,10 +135,6 @@ class DcmlLoader(PLoader):
         self.loader.add_dir(directory=directory, **kwargs)
 
 
-def str2camel_case(keyword: str) -> str:
-    return "".join(comp.title() for comp in keyword.split("_"))
-
-
 class StackedFacetLoader(PLoader):
     def __init__(
         self,
@@ -155,8 +151,9 @@ class StackedFacetLoader(PLoader):
             m = re.match(r"^concatenated_(.*)\.tsv$", f)
             if m is None:
                 continue
+            feature_name = m.group(1)
             try:
-                facet_name = DcmlPiece._internal_keyword2facet(m.group(1))
+                facet_name = DcmlPiece._internal_keyword2facet(feature_name)
             except KeyError:
                 logger.warning(
                     f"'{f}' concatenates {m.group(1)} which is not a recognized facet."
@@ -276,7 +273,7 @@ if __name__ == "__main__":
         assert isinstance(piece, PPiece)
         print(
             f"{piece.name} with available facets {piece.get_available_facets()}, and "
-            f".check_facet_availability('Positions') yielding {piece.check_facet_availability('Positions')!r}"
+            f".check_facet_availability('Markup') yielding {piece.check_facet_availability('Markup')!r}"
         )
         facet = piece.get_facet("Notes")
         assert isinstance(facet, PNotesTable)
