@@ -80,26 +80,29 @@ class FacetName(str, Enum):
     def make_tuple(cls, facets: Iterable[Union[FacetName, str]]) -> Tuple[FacetName]:
         return tuple(cls(c) for c in facets)
 
-    Measures = "Measures"
-    Notes = "Notes"
-    Rests = "Rests"
-    NotesAndRests = "NotesAndRests"
-    ChordSymbols = "Labels"
-    Harmonies = "Harmonies"
-    FormLabels = "FormChordSymbols"
     Cadences = "Cadences"
+    ChordSymbols = "Labels"
     Events = "Events"
+    FormLabels = "FormChordSymbols"
+    Harmonies = "Harmonies"
     Markup = "Markup"
+    Measures = "Measures"
+    Metadata = "Metadata"
+    Notes = "Notes"
+    NotesAndRests = "NotesAndRests"
+    Phrases = "Phrases"
+    Rests = "Rests"
+    StackedCadences = "StackedCadences"
+    StackedChordSymbols = "StackedLabels"
+    StackedEvents = "StackedEvents"
+    StackedFormLabels = "StackedFormChordSymbols"
+    StackedHarmonies = "StackedHarmonies"
+    StackedMarkup = "StackedMarkup"
     StackedMeasures = "StackedMeasures"
     StackedNotes = "StackedNotes"
-    StackedRests = "StackedRests"
     StackedNotesAndRests = "StackedNotesAndRests"
-    StackedChordSymbols = "StackedLabels"
-    StackedHarmonies = "StackedHarmonies"
-    StackedFormLabels = "StackedFormChordSymbols"
-    StackedCadences = "StackedCadences"
-    StackedEvents = "StackedEvents"
-    StackedMarkup = "StackedMarkup"
+    StackedPhrases = "StackedPhrases"
+    StackedRests = "StackedRests"
 
 
 class FeatureName(str, Enum):
@@ -434,12 +437,22 @@ class NotesAndRestsMixin(ABC):
 
 
 @dataclass(frozen=True)
+class PhrasesMixin(ABC):
+    pass
+
+
+@dataclass(frozen=True)
 class RestsMixin(ABC):
     pass
 
 
 @dataclass(frozen=True)
 class Cadences(Facet, CadencesMixin):
+    pass
+
+
+@dataclass(frozen=True)
+class ChordSymbols(Facet, ChordSymbolsMixin):
     pass
 
 
@@ -459,12 +472,12 @@ class Harmonies(Facet, HarmoniesMixin):
 
 
 @dataclass(frozen=True)
-class ChordSymbols(Facet, ChordSymbolsMixin):
+class Markup(Facet, MarkupMixin):
     pass
 
 
 @dataclass(frozen=True)
-class Markup(Facet, MarkupMixin):
+class Metadata(Facet):
     pass
 
 
@@ -484,32 +497,39 @@ class NotesAndRests(Facet, NotesAndRestsMixin):
 
 
 @dataclass(frozen=True)
-class Rests(Facet):
+class Phrases(Facet, PhrasesMixin):
+    pass
+
+
+@dataclass(frozen=True)
+class Rests(Facet, RestsMixin):
     pass
 
 
 def str2facet_name(name: Union[FacetName, str]) -> FacetName:
     s2f = {
+        "cadences": FacetName.Cadences,
+        "chordsymbols": FacetName.ChordSymbols,
+        "events": FacetName.Events,
+        "formlabels": FacetName.FormLabels,
+        "harmonies": FacetName.Harmonies,
+        "markup": FacetName.Markup,
+        "metadata": FacetName.Metadata,
         "measures": FacetName.Measures,
         "notes": FacetName.Notes,
-        "rests": FacetName.Rests,
         "notesandrests": FacetName.NotesAndRests,
-        "chordsymbols": FacetName.ChordSymbols,
-        "harmonies": FacetName.Harmonies,
-        "formlabels": FacetName.FormLabels,
-        "cadences": FacetName.Cadences,
-        "events": FacetName.Events,
-        "markup": FacetName.Markup,
+        "phrases": FacetName.Phrases,
+        "rests": FacetName.Rests,
+        "stackedcadences": FacetName.StackedCadences,
+        "stackedchordsymbols": FacetName.StackedChordSymbols,
+        "stackedevents": FacetName.StackedEvents,
+        "stackedformlabels": FacetName.StackedFormLabels,
+        "stackedharmonies": FacetName.StackedHarmonies,
+        "stackedmarkup": FacetName.StackedMarkup,
         "stackedmeasures": FacetName.StackedMeasures,
         "stackednotes": FacetName.StackedNotes,
-        "stackedrests": FacetName.StackedRests,
         "stackednotesandrests": FacetName.StackedNotesAndRests,
-        "stackedchordsymbols": FacetName.StackedChordSymbols,
-        "stackedharmonies": FacetName.StackedHarmonies,
-        "stackedformlabels": FacetName.StackedFormLabels,
-        "stackedcadences": FacetName.StackedCadences,
-        "stackedevents": FacetName.StackedEvents,
-        "stackedmarkup": FacetName.StackedMarkup,
+        "stackedrests": FacetName.StackedRests,
     }
     try:
         facet_name = FacetName(name)
@@ -526,26 +546,29 @@ def str2facet_name(name: Union[FacetName, str]) -> FacetName:
 def get_facet_class(name: Union[FacetName, str]) -> Type[Facet]:
     facet_name = str2facet_name(name)
     name2facet = {
+        FacetName.Cadences: Cadences,
+        FacetName.ChordSymbols: ChordSymbols,
+        FacetName.Events: Events,
+        FacetName.FormLabels: FormLabels,
+        FacetName.Harmonies: Harmonies,
+        FacetName.Markup: Markup,
+        FacetName.Metadata: Metadata,
         FacetName.Measures: Measures,
         FacetName.Notes: Notes,
-        FacetName.Rests: Rests,
         FacetName.NotesAndRests: NotesAndRests,
-        FacetName.ChordSymbols: ChordSymbols,
-        FacetName.Harmonies: Harmonies,
-        FacetName.FormLabels: FormLabels,
-        FacetName.Cadences: Cadences,
-        FacetName.Events: Events,
-        FacetName.Markup: Markup,
+        FacetName.Phrases: Phrases,
+        FacetName.Rests: Rests,
+        FacetName.StackedCadences: Cadences,
+        FacetName.StackedChordSymbols: ChordSymbols,
+        FacetName.StackedEvents: Events,
+        FacetName.StackedFormLabels: FormLabels,
+        FacetName.StackedHarmonies: Harmonies,
+        FacetName.StackedMarkup: Markup,
         FacetName.StackedMeasures: Measures,
         FacetName.StackedNotes: Notes,
-        FacetName.StackedRests: Rests,
         FacetName.StackedNotesAndRests: NotesAndRests,
-        FacetName.StackedChordSymbols: ChordSymbols,
-        FacetName.StackedHarmonies: Harmonies,
-        FacetName.StackedFormLabels: FormLabels,
-        FacetName.StackedCadences: Cadences,
-        FacetName.StackedEvents: Events,
-        FacetName.StackedMarkup: Markup,
+        FacetName.StackedPhrases: StackedPhrases,
+        FacetName.StackedRests: Rests,
     }
     return name2facet.get(facet_name)
 
@@ -583,6 +606,11 @@ class StackedCadences(StackedFacet, CadencesMixin):
 
 
 @dataclass(frozen=True)
+class StackedChordSymbols(StackedFacet, ChordSymbolsMixin):
+    pass
+
+
+@dataclass(frozen=True)
 class StackedEvents(StackedFacet, EventsMixin):
     pass
 
@@ -594,11 +622,6 @@ class StackedFormLabels(StackedFacet, FormLabelsMixin):
 
 @dataclass(frozen=True)
 class StackedHarmonies(StackedFacet, HarmoniesMixin):
-    pass
-
-
-@dataclass(frozen=True)
-class StackedChordSymbols(StackedFacet, ChordSymbolsMixin):
     pass
 
 
@@ -619,6 +642,11 @@ class StackedNotes(StackedFacet, NotesMixin):
 
 @dataclass(frozen=True)
 class StackedNotesAndRests(StackedFacet, NotesAndRestsMixin):
+    pass
+
+
+@dataclass(frozen=True)
+class StackedPhrases(StackedFacet, PhrasesMixin):
     pass
 
 
