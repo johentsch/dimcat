@@ -67,12 +67,12 @@ class DcmlPiece(Data):
             "notes": FacetName.Notes,
             "rests": FacetName.Rests,
             "notes_and_rests": FacetName.NotesAndRests,
-            "labels": FacetName.Labels,
+            "labels": FacetName.ChordSymbols,
             "expanded": FacetName.Harmonies,
             "form_labels": FacetName.FormLabels,
             "cadences": FacetName.Cadences,
             "events": FacetName.Events,
-            "chords": FacetName.Positions,
+            "chords": FacetName.Markup,
         }
         facet = keyword2facet.get(keyword)
         if facet is None:
@@ -88,12 +88,12 @@ class DcmlPiece(Data):
             FacetName.Notes: "notes",
             FacetName.Rests: "rests",
             FacetName.NotesAndRests: "notes_and_rests",
-            FacetName.Labels: "labels",
+            FacetName.ChordSymbols: "labels",
             FacetName.Harmonies: "expanded",
             FacetName.FormLabels: "form_labels",
             FacetName.Cadences: "cadences",
             FacetName.Events: "events",
-            FacetName.Positions: "chords",
+            FacetName.Markup: "chords",
         }
         keyword = facet2keyword.get(facet)
         if keyword is None:

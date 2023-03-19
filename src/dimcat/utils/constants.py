@@ -70,10 +70,10 @@ DCML_FACETS: List[str] = [
     "Notes",
     "Rests",
     "NotesAndRests",
-    "Labels",
+    "ChordSymbols",
     "Harmonies",
     "FormLabels",
     "Cadences",
     "Events",
-    "Positions",
+    "Markup",
 ]

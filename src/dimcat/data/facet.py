@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC
+from collections import defaultdict
 from dataclasses import dataclass, replace
 from enum import Enum, IntEnum, auto
 from functools import cached_property, lru_cache
@@ -83,22 +84,22 @@ class FacetName(str, Enum):
     Notes = "Notes"
     Rests = "Rests"
     NotesAndRests = "NotesAndRests"
-    Labels = "Labels"
+    ChordSymbols = "Labels"
     Harmonies = "Harmonies"
-    FormLabels = "FormLabels"
+    FormLabels = "FormChordSymbols"
     Cadences = "Cadences"
     Events = "Events"
-    Positions = "Positions"
+    Markup = "Markup"
     StackedMeasures = "StackedMeasures"
     StackedNotes = "StackedNotes"
     StackedRests = "StackedRests"
     StackedNotesAndRests = "StackedNotesAndRests"
-    StackedLabels = "StackedLabels"
+    StackedChordSymbols = "StackedLabels"
     StackedHarmonies = "StackedHarmonies"
-    StackedFormLabels = "StackedFormLabels"
+    StackedFormLabels = "StackedFormChordSymbols"
     StackedCadences = "StackedCadences"
     StackedEvents = "StackedEvents"
-    StackedPositions = "StackedPositions"
+    StackedMarkup = "StackedMarkup"
 
 
 class FeatureName(str, Enum):
@@ -115,14 +116,33 @@ class FeatureName(str, Enum):
         obj.description = description
         return obj
 
+    LABEL = ("label", FacetName.Harmonies)
     GLOBALKEY = ("globalkey", FacetName.Harmonies)
     LOCALKEY = ("localkey", FacetName.Harmonies)
+    PEDAL_POINT = ("pedal", FacetName.Harmonies)
+    RN = ("chord", FacetName.Harmonies)
+    SPECIAL_CHORD = ("special", FacetName.Harmonies)
+    RN_ROOT = ("numeral", FacetName.Harmonies)
+    INVERSION = ("figbass", FacetName.Harmonies)
+    MODIFICATIONS = ("changes", FacetName.Harmonies)
+    RELATIVEROOT = ("relativeroot", FacetName.Harmonies)
+    CADENCE = ("cadence", FacetName.Cadences)
+    # PHRASEEND = ("phraseend", FacetName.Harmonies)
+    CHORD_TYPE = ("chord_type", FacetName.Harmonies)
     TPC = ("tpc", FacetName.Notes)
     # CUSTOM = ("TabularFeature", None)
     #
     # @classmethod
     # def _missing_(cls, value):
     #     return FeatureName.CUSTOM
+
+
+@lru_cache()
+def get_facet2feature_dict() -> Dict[FacetName, FeatureName]:
+    facet2feature = defaultdict(list)
+    for feature_name in FeatureName:
+        facet2feature[feature_name.facet].append(feature_name)
+    return dict(facet2feature)
 
 
 def str2feature_name(name: Union[str, FeatureName]) -> FeatureName:
@@ -332,30 +352,14 @@ class FacetMixin(ConfiguredDataframe):
 
 @dataclass(frozen=True)
 class Facet(FacetID, FacetMixin):
+    _facet_name: ClassVar[FacetName]
+    _available_features: ClassVar[List[FeatureName]]
+
     def get_feature(self, feature: Union[FeatureName, FeatureConfig]) -> TabularFeature:
         """In its basic form, get one of the columns as a :obj:`WrappedSeries`.
         Subclasses may offer additional features, such as transformed columns or subsets of the table.
         """
-        if isinstance(feature, Configuration):
-            if isinstance(feature, FeatureID):
-                raise NotImplementedError("Not accepting IDs as of now, only configs.")
-            feature_config = FeatureConfig.from_dataclass(feature)
-            feature_columns = [feature_config.dtype.value]
-        else:
-            try:
-                feature_name = str2feature_name(feature)
-                feature_columns = [feature_name.value]
-            except ValueError:
-                if isinstance(feature, Enum):
-                    feature_name = feature.value
-                    feature_columns = [feature_name]
-                else:
-                    feature_name = str(feature)
-                    if isinstance(feature, str):
-                        feature_columns = [feature]
-                    else:
-                        feature_columns = feature
-            feature_config = DefaultFeatureConfig(dtype=feature_name)
+        feature_config, feature_columns = feature_argument2config(feature)
         columns = self.context_columns + feature_columns
         result = TabularFeature.from_config(
             config=feature_config,
@@ -382,7 +386,8 @@ class FormLabelsMixin(ABC):
 
 @dataclass(frozen=True)
 class HarmoniesMixin(ABC):
-    facet_name = FacetName.Harmonies
+    facet_name: ClassVar[FacetName] = FacetName.Harmonies
+    _available_features: ClassVar[List[FeatureName]]
 
     @cached_property
     def globalkey(self) -> str:
@@ -401,7 +406,12 @@ class HarmoniesMixin(ABC):
 
 
 @dataclass(frozen=True)
-class LabelsMixin(ABC):
+class ChordSymbolsMixin(ABC):
+    pass
+
+
+@dataclass(frozen=True)
+class MarkupMixin(ABC):
     pass
 
 
@@ -420,11 +430,6 @@ class NotesMixin(ABC):
 
 @dataclass(frozen=True)
 class NotesAndRestsMixin(ABC):
-    pass
-
-
-@dataclass(frozen=True)
-class PositionsMixin(ABC):
     pass
 
 
@@ -454,7 +459,12 @@ class Harmonies(Facet, HarmoniesMixin):
 
 
 @dataclass(frozen=True)
-class Labels(Facet, LabelsMixin):
+class ChordSymbols(Facet, ChordSymbolsMixin):
+    pass
+
+
+@dataclass(frozen=True)
+class Markup(Facet, MarkupMixin):
     pass
 
 
@@ -474,11 +484,6 @@ class NotesAndRests(Facet, NotesAndRestsMixin):
 
 
 @dataclass(frozen=True)
-class Positions(Facet, PositionsMixin):
-    pass
-
-
-@dataclass(frozen=True)
 class Rests(Facet):
     pass
 
@@ -489,22 +494,22 @@ def str2facet_name(name: Union[FacetName, str]) -> FacetName:
         "notes": FacetName.Notes,
         "rests": FacetName.Rests,
         "notesandrests": FacetName.NotesAndRests,
-        "labels": FacetName.Labels,
+        "chordsymbols": FacetName.ChordSymbols,
         "harmonies": FacetName.Harmonies,
         "formlabels": FacetName.FormLabels,
         "cadences": FacetName.Cadences,
         "events": FacetName.Events,
-        "positions": FacetName.Positions,
+        "markup": FacetName.Markup,
         "stackedmeasures": FacetName.StackedMeasures,
         "stackednotes": FacetName.StackedNotes,
         "stackedrests": FacetName.StackedRests,
         "stackednotesandrests": FacetName.StackedNotesAndRests,
-        "stackedlabels": FacetName.StackedLabels,
+        "stackedchordsymbols": FacetName.StackedChordSymbols,
         "stackedharmonies": FacetName.StackedHarmonies,
         "stackedformlabels": FacetName.StackedFormLabels,
         "stackedcadences": FacetName.StackedCadences,
         "stackedevents": FacetName.StackedEvents,
-        "stackedpositions": FacetName.StackedPositions,
+        "stackedmarkup": FacetName.StackedMarkup,
     }
     try:
         facet_name = FacetName(name)
@@ -525,22 +530,22 @@ def get_facet_class(name: Union[FacetName, str]) -> Type[Facet]:
         FacetName.Notes: Notes,
         FacetName.Rests: Rests,
         FacetName.NotesAndRests: NotesAndRests,
-        FacetName.Labels: Labels,
+        FacetName.ChordSymbols: ChordSymbols,
         FacetName.Harmonies: Harmonies,
         FacetName.FormLabels: FormLabels,
         FacetName.Cadences: Cadences,
         FacetName.Events: Events,
-        FacetName.Positions: Positions,
+        FacetName.Markup: Markup,
         FacetName.StackedMeasures: Measures,
         FacetName.StackedNotes: Notes,
         FacetName.StackedRests: Rests,
         FacetName.StackedNotesAndRests: NotesAndRests,
-        FacetName.StackedLabels: Labels,
+        FacetName.StackedChordSymbols: ChordSymbols,
         FacetName.StackedHarmonies: Harmonies,
         FacetName.StackedFormLabels: FormLabels,
         FacetName.StackedCadences: Cadences,
         FacetName.StackedEvents: Events,
-        FacetName.StackedPositions: Positions,
+        FacetName.StackedMarkup: Markup,
     }
     return name2facet.get(facet_name)
 
@@ -562,26 +567,7 @@ class StackedFacet(Stack, FacetMixin):
         """In its basic form, get one of the columns as a :obj:`WrappedSeries`.
         Subclasses may offer additional features, such as transformed columns or subsets of the table.
         """
-        if isinstance(feature, Configuration):
-            if isinstance(feature, FeatureID):
-                raise NotImplementedError("Not accepting IDs as of now, only configs.")
-            feature_config = FeatureConfig.from_dataclass(feature)
-            feature_columns = [feature_config.dtype.value]
-        else:
-            try:
-                feature_name = str2feature_name(feature)
-                feature_columns = [feature_name.value]
-            except ValueError:
-                if isinstance(feature, Enum):
-                    feature_name = feature.value
-                    feature_columns = [feature_name]
-                else:
-                    feature_name = str(feature)
-                    if isinstance(feature, str):
-                        feature_columns = [feature]
-                    else:
-                        feature_columns = feature
-            feature_config = DefaultFeatureConfig(dtype=feature_name)
+        feature_config, feature_columns = feature_argument2config(feature)
         columns = self.context_columns + feature_columns
         result = StackedFeature(
             df=self.df[columns],
@@ -612,7 +598,12 @@ class StackedHarmonies(StackedFacet, HarmoniesMixin):
 
 
 @dataclass(frozen=True)
-class StackedLabels(StackedFacet, LabelsMixin):
+class StackedChordSymbols(StackedFacet, ChordSymbolsMixin):
+    pass
+
+
+@dataclass(frozen=True)
+class StackedMarkup(StackedFacet, MarkupMixin):
     pass
 
 
@@ -632,11 +623,6 @@ class StackedNotesAndRests(StackedFacet, NotesAndRestsMixin):
 
 
 @dataclass(frozen=True)
-class StackedPositions(StackedFacet, PositionsMixin):
-    pass
-
-
-@dataclass(frozen=True)
 class StackedRests(StackedFacet, RestsMixin):
     pass
 
@@ -649,22 +635,22 @@ def get_stacked_facet_class(name: [FacetName, str]) -> Type[StackedFacet]:
         FacetName.Notes: StackedNotes,
         FacetName.Rests: StackedRests,
         FacetName.NotesAndRests: StackedNotesAndRests,
-        FacetName.Labels: StackedLabels,
+        FacetName.ChordSymbols: StackedChordSymbols,
         FacetName.Harmonies: StackedHarmonies,
         FacetName.FormLabels: StackedFormLabels,
         FacetName.Cadences: StackedCadences,
         FacetName.Events: StackedEvents,
-        FacetName.Positions: StackedPositions,
+        FacetName.Markup: StackedMarkup,
         FacetName.StackedMeasures: StackedMeasures,
         FacetName.StackedNotes: StackedNotes,
         FacetName.StackedRests: StackedRests,
         FacetName.StackedNotesAndRests: StackedNotesAndRests,
-        FacetName.StackedLabels: StackedLabels,
+        FacetName.StackedChordSymbols: StackedChordSymbols,
         FacetName.StackedHarmonies: StackedHarmonies,
         FacetName.StackedFormLabels: StackedFormLabels,
         FacetName.StackedCadences: StackedCadences,
         FacetName.StackedEvents: StackedEvents,
-        FacetName.StackedPositions: StackedPositions,
+        FacetName.StackedMarkup: StackedMarkup,
     }
     return name2facet.get(facet_name)
 
@@ -713,3 +699,27 @@ def facet_argument2config(facet=Union[FacetName, Configuration]) -> FacetConfig:
         facet_name = str2facet_name(facet)
         config = DefaultFacetConfig(dtype=FacetName(facet_name))
     return config
+
+
+def feature_argument2config(feature) -> Tuple[FeatureConfig, List[str]]:
+    if isinstance(feature, Configuration):
+        if isinstance(feature, FeatureID):
+            raise NotImplementedError("Not accepting IDs as of now, only configs.")
+        feature_config = FeatureConfig.from_dataclass(feature)
+        feature_columns = [feature_config.dtype.value]
+    else:
+        try:
+            feature_name = str2feature_name(feature)
+            feature_columns = [feature_name.value]
+        except ValueError:
+            if isinstance(feature, Enum):
+                feature_name = feature.value
+                feature_columns = [feature_name]
+            else:
+                feature_name = str(feature)
+                if isinstance(feature, str):
+                    feature_columns = [feature]
+                else:
+                    feature_columns = feature
+        feature_config = DefaultFeatureConfig(dtype=feature_name)
+    return feature_config, feature_columns
