@@ -10,6 +10,7 @@ from typing import (
     ClassVar,
     Dict,
     Iterable,
+    List,
     Optional,
     Protocol,
     Sequence,
@@ -42,6 +43,18 @@ from dimcat.utils.functions import get_value_profile_mask
 from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
+
+TIME_COLUMNS = [
+    "mc",
+    "mn",
+    "quarterbeats",
+    "duration_qb",
+    "mc_onset",
+    "mn_onset",
+    "duration",
+]
+LAYER_COLUMNS = ["staff", "voice"]
+CONTEXT_COLUMNS = TIME_COLUMNS + LAYER_COLUMNS
 
 
 @runtime_checkable
@@ -259,6 +272,10 @@ class Facet(FacetID, ConfiguredDataframe):
     def config(self) -> FacetConfig:
         return self._config_type.from_dataclass(self)
 
+    @cached_property
+    def context_columns(self) -> List[str]:
+        return [col for col in self.df.columns if col in CONTEXT_COLUMNS]
+
     @classmethod
     @property
     def dtype(cls) -> Enum:
@@ -296,12 +313,25 @@ class Facet(FacetID, ConfiguredDataframe):
 
     # endregion Default methods repeated for type hints
 
-    def get_feature(self, feature: Union[str, Enum]) -> WrappedSeries:
+    def get_feature(self, feature: Union[FeatureName, FeatureConfig]) -> TabularFeature:
         """In its basic form, get one of the columns as a :obj:`WrappedSeries`.
         Subclasses may offer additional features, such as transformed columns or subsets of the table.
         """
-        series: SomeSeries = self.df[feature]
-        return WrappedSeries(series)
+        if isinstance(feature, Configuration):
+            if isinstance(feature, FeatureID):
+                raise NotImplementedError("Not accepting IDs as of now, only configs.")
+            feature_config = FeatureConfig.from_dataclass(feature)
+            feature_name = feature_config.dtype
+        else:
+            feature_name = str2feature_name(feature)
+            feature_config = DefaultFeatureConfig(feature_name=feature_name)
+        columns = self.context_columns + [feature_name.value]
+        result = Stack(
+            df=self.df[columns],
+            configuration=feature_config,
+            identifier=self.identifier,
+        )
+        return result
 
 
 @dataclass(frozen=True)

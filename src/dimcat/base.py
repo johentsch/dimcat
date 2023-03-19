@@ -242,7 +242,7 @@ class ConfiguredObjectMixin(ABC):
 
 
 @dataclass(frozen=True)
-class ConfiguredDataframe(ConfiguredObjectMixin, WrappedDataframe):
+class ConfiguredDataframe(ConfiguredObjectMixin, WrappedDataframe, Data):
     @classmethod
     def from_df(
         cls,
@@ -369,25 +369,37 @@ class Stack(StackID, ConfiguredDataframe):
         )
 
     def get_piece(self, piece_id: PieceID):
-        return self.df.loc[piece_id,]
+        df = self.df.loc[piece_id,]
+        constructor = typestring2type(self.dtype)
+        identifier = PieceIdentifier(piece_id=piece_id)
+        return constructor.from_config(
+            config=self.configuration,
+            df=df,
+            identifier=identifier,
+        )
 
 
-def typestrings2types(typestrings: Union[str, Collection[str]]) -> Tuple[type]:
+def typestrings2types(
+    typestrings: Union[Union[str, Enum], Collection[Union[str, Enum]]]
+) -> Tuple[type]:
     """Turns one or several names of classes contained in this module into a
     tuple of references to these classes."""
+    if isinstance(typestrings, (str, Enum)):
+        typestrings = [typestrings]
+    result = [typestring2type(typestring) for typestring in typestrings]
+    return tuple(result)
+
+
+def typestring2type(typestring: Union[str, Enum]) -> type:
+    if isinstance(typestring, Enum):
+        typestring = typestring.value
     d_types = Data._registry
     ps_types = PipelineStep._registry
-    if isinstance(typestrings, str):
-        typestrings = [typestrings]
-    result = []
-    for typ in typestrings:
-        if typ in d_types:
-            result.append(d_types[typ])
-        elif typ in ps_types:
-            result.append(ps_types[typ])
-        else:
-            raise KeyError(
-                f"Typestring '{typ}' does not correspond to a known subclass of PipelineStep or Data:\n"
-                f"{ps_types}\n{d_types}"
-            )
-    return tuple(result)
+    if typestring in d_types:
+        return d_types[typestring]
+    elif typestring in ps_types:
+        return ps_types[typestring]
+    raise KeyError(
+        f"Typestring '{typestring}' does not correspond to a known subclass of PipelineStep or Data:\n"
+        f"{ps_types}\n{d_types}"
+    )

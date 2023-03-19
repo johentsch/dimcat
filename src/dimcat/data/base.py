@@ -254,7 +254,6 @@ class Dataset(Data):
             if isinstance(feature, FeatureID):
                 raise NotImplementedError("Not accepting IDs as of now, only configs.")
             feature_config = FeatureConfig.from_dataclass(feature)
-            feature_name = feature_config.dtype
             facet_argument = feature_config2facet_config(feature_config)
         else:
             feature_name = str2feature_name(feature)
