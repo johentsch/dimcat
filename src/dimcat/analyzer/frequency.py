@@ -1,12 +1,13 @@
 from dataclasses import dataclass
-from typing import ClassVar, Type, Union
+from typing import ClassVar, Optional, Type, Union
 
 from dimcat.analyzer.base import (
     Analyzer,
     AnalyzerConfig,
     AnalyzerName,
-    DefaultAnalyzerConfig,
     DispatchStrategy,
+    Orientation,
+    UnitOfAnalysis,
 )
 from dimcat.base import Stack
 from dimcat.data.facet import Feature, FeatureName, StackedFeature
@@ -19,8 +20,13 @@ class CounterConfig(AnalyzerConfig):
 
 
 @dataclass(frozen=True)
-class DefaultCounterConfig(CounterConfig, DefaultAnalyzerConfig):
+class DefaultCounterConfig(CounterConfig):
+    analyzed_feature: FeatureName
     dtype: AnalyzerName = AnalyzerName.Counter
+    strategy: DispatchStrategy = DispatchStrategy.GROUPBY_APPLY
+    smallest_unit: UnitOfAnalysis = UnitOfAnalysis.SLICE
+    orientation: Orientation = Orientation.WIDE
+    fill_na: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -48,7 +54,7 @@ class Counter(CounterConfig, Analyzer):
         return processed
 
     def post_process(self, result):
-        renamed = result.rename("absolute_count")
+        renamed = result.rename("absolute_count").astype("Int64")
         return super().post_process(renamed)
 
 

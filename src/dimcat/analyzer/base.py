@@ -90,20 +90,22 @@ class Orientation(str, Enum):
 
 @dataclass(frozen=True)
 class AnalyzerConfig(Configuration):
-    dtype: AnalyzerName
     analyzed_feature: FeatureName
+    dtype: AnalyzerName
     strategy: DispatchStrategy
     smallest_unit: UnitOfAnalysis
     orientation: Orientation
+    fill_na: Any
 
 
 @dataclass(frozen=True)
 class DefaultAnalyzerConfig(AnalyzerConfig):
-    dtype: AnalyzerName
     analyzed_feature: FeatureName
+    dtype: AnalyzerName
     strategy: DispatchStrategy = DispatchStrategy.GROUPBY_APPLY
     smallest_unit: UnitOfAnalysis = UnitOfAnalysis.SLICE
     orientation: Orientation = Orientation.WIDE
+    fill_na: Any = None
 
 
 @dataclass(frozen=True)
@@ -256,7 +258,7 @@ class Analyzer(AnalyzerConfig, ConfiguredObjectMixin, PipelineStep):
     def post_process(self, result):
         """Whatever needs to be done after analyzing the data before passing it to the dataset."""
         if self.orientation == Orientation.WIDE:
-            return result.unstack()
+            return result.unstack(fill_value=self.fill_na)
         else:
             return result
 
