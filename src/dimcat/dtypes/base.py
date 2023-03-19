@@ -429,9 +429,15 @@ class WrappedDataframe(Generic[D]):
         instance = cls(df=df, **kwargs)
         return instance
 
+    def get_column(self, column_name: str):
+        return self.df.loc[:, column_name]
+
     def __getattr__(self, item):
         """Enable using WrappedDataframe like a DataFrame."""
         return getattr(self.df, item)
+
+    def __getitem__(self, item):
+        return self.df[item]
 
     def __len__(self) -> int:
         return len(self.df.index)

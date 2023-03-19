@@ -212,7 +212,7 @@ class StackedFacetLoader(PLoader):
             piece_index = PieceIndex(self.facet2ids[facet_name])
             identifier = PieceStackIdentifier(piece_index=piece_index)
             facet_class = get_stacked_facet_class(facet_name)
-            self.facet_store[facet_name] = facet_class.from_df(
+            self.facet_store[facet_name] = facet_class.from_default(
                 df=stacked_df, identifier=identifier
             )
         else:

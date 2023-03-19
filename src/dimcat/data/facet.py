@@ -162,6 +162,7 @@ class Available(IntEnum):
 class FeatureConfig(Configuration):
     dtype: FeatureName
     feature_type: FeatureType
+    n_columns: int
     df_type: DataBackend
     unfold: bool
     interval_index: bool
@@ -176,6 +177,7 @@ class DefaultFeatureConfig(FeatureConfig):
 
     dtype: FeatureName
     feature_type: FeatureType = FeatureType.TabularFeature
+    n_columns: int = 1
     df_type: DataBackend = DataBackend.PANDAS
     unfold: bool = False
     interval_index: bool = True
@@ -371,17 +373,17 @@ class HarmoniesMixin(ABC):
 
     @cached_property
     def globalkey(self) -> str:
-        return self.get_feature(feature=FeatureName.GLOBALKEY)[0]
+        return self.get_column(FeatureName.GLOBALKEY)[0]
 
     def get_localkey_bigrams(self) -> Bigrams:
         """Returns a TypedSequence of bigram tuples representing modulations between local keys."""
         localkey_list = ContiguousSequence(
-            self.get_feature(feature=FeatureName.LOCALKEY)
+            self.get_column(FeatureName.LOCALKEY)
         ).get_changes()
         return localkey_list.get_n_grams(n=2)
 
     def get_chord_bigrams(self) -> Bigrams:
-        chords = self.get_feature("chord")
+        chords = self.get_column("chord")
         return chords.get_n_grams(2)
 
 
@@ -643,10 +645,8 @@ if __name__ == "__main__":
     assert harmonies2 == harmonies3
     harmonies4 = Harmonies.from_df(df=df, identifier=f_id)
     assert harmonies3 == harmonies4
-    chords_as_sequence = ContiguousSequence(
-        harmonies2.get_feature(FeatureName.LOCALKEY)
-    )
-    chords_as_wrapped_series = harmonies1.get_feature(FeatureName.LOCALKEY).series
+    chords_as_sequence = ContiguousSequence(harmonies2[FeatureName.LOCALKEY])
+    chords_as_wrapped_series = harmonies1[FeatureName.LOCALKEY]
     value_profile_mask = get_value_profile_mask(
         chords_as_wrapped_series, na_values="ffill"
     )
