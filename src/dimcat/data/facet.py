@@ -34,7 +34,6 @@ from dimcat.dtypes.base import (
     PieceID,
     SomeDataframe,
     SomeFeature,
-    SomeSeries,
     WrappedSeries,
 )
 from dimcat.dtypes.sequence import Bigrams, ContiguousSequence
@@ -119,11 +118,11 @@ class FeatureName(str, Enum):
     GLOBALKEY = ("globalkey", FacetName.Harmonies)
     LOCALKEY = ("localkey", FacetName.Harmonies)
     TPC = ("tpc", FacetName.Notes)
-    CUSTOM = ("TabularFeature", None)
-
-    @classmethod
-    def _missing_(cls, value):
-        return FeatureName.CUSTOM
+    # CUSTOM = ("TabularFeature", None)
+    #
+    # @classmethod
+    # def _missing_(cls, value):
+    #     return FeatureName.CUSTOM
 
 
 def str2feature_name(name: Union[str, FeatureName]) -> FeatureName:
@@ -161,8 +160,8 @@ class Available(IntEnum):
 
 @dataclass(frozen=True)
 class FeatureConfig(Configuration):
-    feature_name: FeatureName
-    dtype: FeatureType
+    dtype: FeatureName
+    feature_type: FeatureType
     df_type: DataBackend
     unfold: bool
     interval_index: bool
@@ -175,8 +174,8 @@ class FeatureConfig(Configuration):
 class DefaultFeatureConfig(FeatureConfig):
     """Configuration for any facet."""
 
-    feature_name: FeatureName
-    dtype: FeatureType = FeatureType.TabularFeature
+    dtype: FeatureName
+    feature_type: FeatureType = FeatureType.TabularFeature
     df_type: DataBackend = DataBackend.PANDAS
     unfold: bool = False
     interval_index: bool = True
@@ -258,7 +257,7 @@ class TabularFeature(FeatureID, ConfiguredDataframe):
 
 
 @config_dataclass(dtype=FacetName, df_type=DataBackend)
-class Facet(FacetID, ConfiguredDataframe):
+class FacetMixin(ConfiguredDataframe):
     """Classes structurally implementing the PFacet protocol."""
 
     _config_type: ClassVar[Type[FacetConfig]] = FacetConfig
@@ -321,17 +320,34 @@ class Facet(FacetID, ConfiguredDataframe):
             if isinstance(feature, FeatureID):
                 raise NotImplementedError("Not accepting IDs as of now, only configs.")
             feature_config = FeatureConfig.from_dataclass(feature)
-            feature_name = feature_config.dtype
+            feature_columns = [feature_config.dtype.value]
         else:
-            feature_name = str2feature_name(feature)
-            feature_config = DefaultFeatureConfig(feature_name=feature_name)
-        columns = self.context_columns + [feature_name.value]
+            try:
+                feature_name = str2feature_name(feature)
+                feature_columns = [feature_name.value]
+            except ValueError:
+                if isinstance(feature, Enum):
+                    feature_name = feature.value
+                    feature_columns = [feature_name]
+                else:
+                    feature_name = str(feature)
+                    if isinstance(feature, str):
+                        feature_columns = [feature]
+                    else:
+                        feature_columns = feature
+            feature_config = DefaultFeatureConfig(dtype=feature_name)
+        columns = self.context_columns + feature_columns
         result = Stack(
             df=self.df[columns],
             configuration=feature_config,
             identifier=self.identifier,
         )
         return result
+
+
+@dataclass(frozen=True)
+class Facet(FacetID, FacetMixin):
+    pass
 
 
 @dataclass(frozen=True)
@@ -520,19 +536,7 @@ def get_facet_class(name: Union[FacetName, str]) -> Type[Facet]:
 
 
 @dataclass(frozen=True)
-class StackedFacet(Stack):
-    _config_type: ClassVar[Type[FacetConfig]]
-    _default_config_type: ClassVar[Type[DefaultFacetConfig]]
-    _id_type: ClassVar[Type[Configuration]]
-    _enum_type: ClassVar[Type[Enum]]
-
-    def get_feature(self, feature: Union[str, Enum]) -> WrappedSeries:
-        """In its basic form, get one of the columns as a :obj:`WrappedSeries`.
-        Subclasses may offer additional features, such as transformed columns or subsets of the table.
-        """
-        series: SomeSeries = self.df[feature]
-        return WrappedSeries(series)
-
+class StackedFacet(Stack, FacetMixin):
     @classmethod
     def get_default_config(cls, **kwargs) -> StackConfig:
         if "configuration" not in kwargs:
