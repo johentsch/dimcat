@@ -233,7 +233,9 @@ def feature_config2facet_config(feature: Configuration):
 
 
 @dataclass(frozen=True)
-class TabularFeature(FeatureID, ConfiguredDataframe):
+class Feature(ConfiguredDataframe):
+    """used as a Mixin; groups TabularFeature and StackedFeature"""
+
     _config_type: ClassVar[Type[FeatureConfig]] = FeatureConfig
     _default_config_type: ClassVar[Type[DefaultFeatureConfig]] = DefaultFeatureConfig
     _id_type: ClassVar[Type[FeatureID]] = FeatureID
@@ -251,6 +253,16 @@ class TabularFeature(FeatureID, ConfiguredDataframe):
         values in the given configuration.
         """
         return cls.from_default(df=df, identifier=identifier, **kwargs)
+
+
+@dataclass(frozen=True)
+class TabularFeature(FeatureID, Feature):
+    pass
+
+
+@dataclass(frozen=True)
+class StackedFeature(Stack, Feature):
+    pass
 
 
 # endregion Features
@@ -314,6 +326,9 @@ class FacetMixin(ConfiguredDataframe):
 
     # endregion Default methods repeated for type hints
 
+
+@dataclass(frozen=True)
+class Facet(FacetID, FacetMixin):
     def get_feature(self, feature: Union[FeatureName, FeatureConfig]) -> TabularFeature:
         """In its basic form, get one of the columns as a :obj:`WrappedSeries`.
         Subclasses may offer additional features, such as transformed columns or subsets of the table.
@@ -339,17 +354,12 @@ class FacetMixin(ConfiguredDataframe):
                         feature_columns = feature
             feature_config = DefaultFeatureConfig(dtype=feature_name)
         columns = self.context_columns + feature_columns
-        result = Stack(
-            df=self.df[columns],
-            configuration=feature_config,
+        result = TabularFeature.from_config(
+            config=feature_config,
             identifier=self.identifier,
+            df=self.df[columns],
         )
         return result
-
-
-@dataclass(frozen=True)
-class Facet(FacetID, FacetMixin):
-    pass
 
 
 @dataclass(frozen=True)
@@ -544,6 +554,38 @@ class StackedFacet(Stack, FacetMixin):
         if "configuration" not in kwargs:
             kwargs["configuration"] = DefaultFacetConfig(dtype=cls.facet_name)
         return super().get_default_config(**kwargs)
+
+    def get_feature(self, feature: Union[FeatureName, FeatureConfig]) -> StackedFeature:
+        """In its basic form, get one of the columns as a :obj:`WrappedSeries`.
+        Subclasses may offer additional features, such as transformed columns or subsets of the table.
+        """
+        if isinstance(feature, Configuration):
+            if isinstance(feature, FeatureID):
+                raise NotImplementedError("Not accepting IDs as of now, only configs.")
+            feature_config = FeatureConfig.from_dataclass(feature)
+            feature_columns = [feature_config.dtype.value]
+        else:
+            try:
+                feature_name = str2feature_name(feature)
+                feature_columns = [feature_name.value]
+            except ValueError:
+                if isinstance(feature, Enum):
+                    feature_name = feature.value
+                    feature_columns = [feature_name]
+                else:
+                    feature_name = str(feature)
+                    if isinstance(feature, str):
+                        feature_columns = [feature]
+                    else:
+                        feature_columns = feature
+            feature_config = DefaultFeatureConfig(dtype=feature_name)
+        columns = self.context_columns + feature_columns
+        result = StackedFeature(
+            df=self.df[columns],
+            configuration=feature_config,
+            identifier=self.identifier,
+        )
+        return result
 
 
 @dataclass(frozen=True)
