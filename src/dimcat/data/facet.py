@@ -239,7 +239,7 @@ class Feature(ConfiguredDataframe):
     _config_type: ClassVar[Type[FeatureConfig]] = FeatureConfig
     _default_config_type: ClassVar[Type[DefaultFeatureConfig]] = DefaultFeatureConfig
     _id_type: ClassVar[Type[FeatureID]] = FeatureID
-    _enum_type: ClassVar[Type[Enum]] = FeatureType
+    _enum_type: ClassVar[Type[FeatureType]] = FeatureType
 
     @classmethod
     def from_df(
@@ -262,7 +262,10 @@ class TabularFeature(FeatureID, Feature):
 
 @dataclass(frozen=True)
 class StackedFeature(Stack, Feature):
-    pass
+    @cached_property
+    def constructor(self):
+        """The constructor for creating a chunk from the Stack."""
+        return TabularFeature
 
 
 # endregion Features

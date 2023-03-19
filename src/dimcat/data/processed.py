@@ -18,12 +18,11 @@ import pandas as pd
 from dimcat.base import Data, typestrings2types
 from dimcat.data.base import Dataset, logger
 from dimcat.dtypes import GroupID, PieceID, SliceID, SomeID
-from dimcat.dtypes.base import SomeDataframe
 from dimcat.utils import clean_index_levels
 from ms3._typing import ScoreFacet
 
 if TYPE_CHECKING:
-    from dimcat.analyzer.base import Result
+    from dimcat.analyzer.base import ResultMixin, StackedResult
 
 
 class _ProcessedDataMixin(Data):
@@ -58,8 +57,8 @@ class _ProcessedDataMixin(Data):
         assert_types = typestrings2types(cls.assert_types)
         if not isinstance(data, assert_types):
             raise TypeError(
-                f"{cls.__name__} objects can only be created from {cls.assert_types} ({assert_types}), "
-                f"not '{type(data).__name__}'"
+                f"{cls.__name__} objects can only be created from {cls.assert_types} {assert_types}, "
+                f"not '{type(data)}'"
             )
         excluded_types = typestrings2types(cls.excluded_types)
         if isinstance(data, excluded_types):
@@ -113,14 +112,14 @@ class AnalyzedData(_ProcessedDataMixin):
 
     def __init__(self, data: Data, **kwargs):
         super().__init__(data=data, **kwargs)
-        self.result: Optional[Result] = None
+        self.result: Optional[ResultMixin] = None
         """Analyzers store their result here using :meth:`set_result`."""
 
-    def set_result(self, result: Result):
+    def set_result(self, result: StackedResult):
         self.result = result
 
-    def get_results(self) -> SomeDataframe:
-        return self.result.get_results()
+    def get_results(self) -> StackedResult:
+        return self.result
 
     def get_group_results(self) -> pd.DataFrame:
         return self.result.get_group_results()

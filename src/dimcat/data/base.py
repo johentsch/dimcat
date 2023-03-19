@@ -17,6 +17,7 @@ from dimcat.data.facet import (
     FeatureID,
     FeatureName,
     StackedFacet,
+    StackedFeature,
     TabularFeature,
     facet_argument2config,
     feature_config2facet_config,
@@ -249,7 +250,7 @@ class Dataset(Data):
         self._cache[config] = result
         return result
 
-    def get_feature(self, feature: Union[FeatureName, Configuration]) -> TabularFeature:
+    def get_feature(self, feature: Union[FeatureName, Configuration]) -> StackedFeature:
         if isinstance(feature, Configuration):
             if isinstance(feature, FeatureID):
                 raise NotImplementedError("Not accepting IDs as of now, only configs.")
@@ -257,7 +258,7 @@ class Dataset(Data):
             facet_argument = feature_config2facet_config(feature_config)
         else:
             feature_name = str2feature_name(feature)
-            feature_config = DefaultFeatureConfig(feature_name=feature_name)
+            feature_config = DefaultFeatureConfig(dtype=feature_name)
             facet_argument = feature_name.facet
         stacked_facet = self.get_facet(facet_argument)
         return stacked_facet.get_feature(feature_config)
@@ -272,8 +273,7 @@ class Dataset(Data):
         self, feature: Union[FeatureName, Configuration]
     ) -> Iterator[TabularFeature]:
         stacked_feature = self.get_feature(feature)
-        for piece_id, df in stacked_feature.groupby(level=[0, 1]):
-            pass
+        yield from stacked_feature.iter_pieces()
 
     def get_previous_pipeline_step(self, idx=0, of_type=None):
         """Retrieve one of the previously applied PipelineSteps, either by index or by type.
@@ -311,11 +311,15 @@ class Dataset(Data):
 
     # region Display
 
-    def show_available_facets(self, min_availability: Optional[Available] = None):
+    def get_available_facets_df(self, min_availability: Optional[Available] = None):
         available = self.available_facets(min_availability=min_availability)
         available_df = pd.DataFrame.from_dict(available, orient="index")
         if available_df.isna().any().any():
             available_df = available_df.fillna(Available.EXTERNALLY).astype(int)
+        return available_df
+
+    def show_available_facets(self, min_availability: Optional[Available] = None):
+        available_df = self.get_available_facets_df(min_availability)
         display(available_df)
 
     # endregion Display
@@ -323,10 +327,13 @@ class Dataset(Data):
     # region Dunder methods
 
     def __str__(self):
-        return str(self.show_available_facets())
+        return str(self.get_available_facets_df())
 
     def __repr__(self):
-        return str(self.show_available_facets())
+        return str(self.get_available_facets_df())
+
+    # def _repr_html_(self):
+    #     self.get_available_facets_df().to_html()
 
     # endregion Dunder methods
 

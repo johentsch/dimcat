@@ -30,6 +30,7 @@ import modin.pandas as mpd
 import numpy as np
 import pandas as pd
 from scipy.stats import entropy
+from typing_extensions import Self
 
 PathLike: TypeAlias = Union[str, Path]
 
@@ -424,13 +425,14 @@ class WrappedDataframe(Generic[D]):
     df: D
 
     @classmethod
-    def from_df(cls, df: D, **kwargs):
+    def from_df(cls, df: D, **kwargs) -> Self:
         """Subclasses can implement transformational logic."""
         instance = cls(df=df, **kwargs)
         return instance
 
-    def get_column(self, column_name: str):
-        return self.df.loc[:, column_name]
+    def get_column(self, column_name: str) -> WrappedSeries:
+        column = self.df.loc[:, column_name]
+        return WrappedSeries(column)
 
     def __getattr__(self, item):
         """Enable using WrappedDataframe like a DataFrame."""

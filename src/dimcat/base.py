@@ -4,12 +4,14 @@ import warnings
 from abc import ABC, abstractmethod
 from dataclasses import astuple, dataclass, fields
 from enum import Enum
+from functools import cached_property
 from typing import (
     TYPE_CHECKING,
     Any,
     ClassVar,
     Collection,
     Dict,
+    Iterator,
     List,
     Optional,
     Tuple,
@@ -17,11 +19,18 @@ from typing import (
     Union,
 )
 
-from dimcat.dtypes.base import PieceID, SomeDataframe, WrappedDataframe
+from dimcat.dtypes.base import (
+    PieceID,
+    SomeDataframe,
+    SomeSeries,
+    WrappedDataframe,
+    WrappedSeries,
+)
 from dimcat.dtypes.sequence import PieceIndex
 from typing_extensions import Self
 
 if TYPE_CHECKING:
+    from dimcat.analyzer.base import ResultConfig
     from dimcat.data.facet import FacetConfig, FeatureConfig
 
 
@@ -212,10 +221,12 @@ class ConfiguredObjectMixin(ABC):
         values in the given configuration.
         """
         cfg_kwargs = cls._config_type.dict_from_dataclass(config, **kwargs)
-        if identifier is not None and not hasattr(cls, "_id_type"):
-            warnings.warn(
-                f"{cls.name} objects need no identifier since their configuration makes them unique."
-            )
+        if cls._id_type == cls._config_type:
+            if identifier is not None:
+                warnings.warn(
+                    f"{cls.name} objects need no identifier since their configuration makes them unique."
+                )
+            return cls(**cfg_kwargs)
         return cls(**cfg_kwargs, identifier=identifier)
 
     @classmethod
@@ -258,6 +269,18 @@ class ConfiguredDataframe(ConfiguredObjectMixin, WrappedDataframe, Data):
 
 
 @dataclass(frozen=True)
+class ConfiguredSeries(ConfiguredObjectMixin, WrappedSeries, Data):
+    @classmethod
+    def from_series(
+        cls,
+        series: SomeSeries,
+        identifier: Optional[Configuration] = None,
+        **kwargs,
+    ) -> Self:
+        return cls.from_default(series=series, identifier=identifier, **kwargs)
+
+
+@dataclass(frozen=True)
 class StackConfig(Configuration):
     configuration: Configuration
 
@@ -282,6 +305,11 @@ class Stack(StackID, ConfiguredDataframe):
     _default_config_type: ClassVar[Type[Configuration]] = DefaultStackConfig
     _id_type: ClassVar[Type[Configuration]] = StackID
 
+    @cached_property
+    def constructor(self):
+        """The constructor for creating a chunk from the Stack."""
+        return typestring2type(self.dtype)
+
     @property
     def dtype(self) -> Enum:
         return self.configuration.dtype
@@ -290,7 +318,7 @@ class Stack(StackID, ConfiguredDataframe):
     def from_list(
         cls,
         list_of_dataframes: List[Union[SomeDataframe, ConfiguredDataframe]],
-        configuration: Optional[Union[FacetConfig, FeatureConfig]] = None,
+        configuration: Optional[Union[FacetConfig, FeatureConfig, ResultConfig]] = None,
         identifier: Optional[PieceStackIdentifier] = None,
     ) -> Self:
         if len(list_of_dataframes) == 0:
@@ -305,12 +333,14 @@ class Stack(StackID, ConfiguredDataframe):
                 )
         if identifier is None:
             try:
-                piece_index = PieceIndex([df.piece_id for df in list_of_dataframes])
+                piece_index = PieceIndex(
+                    [df.identifier.piece_id for df in list_of_dataframes]
+                )
             except Exception:
                 piece_ids = []
                 for df in list_of_dataframes:
                     try:
-                        piece_ids.append(df.piece_id)
+                        piece_ids.append(df.identifier.piece_id)
                     except Exception:
                         raise ValueError(
                             f"{type(df)!r} does not have a piece_id and no identifier was given."
@@ -329,7 +359,12 @@ class Stack(StackID, ConfiguredDataframe):
                     f"Given identifier has {n_ids} PieceIDs but the given list has only {n_dfs} frames."
                 )
         concat_method = configuration.concat_method
-        concatenated_frames = concat_method(list_of_dataframes)
+        if first_element.index.nlevels < 3:
+            concatenated_frames = concat_method(
+                list_of_dataframes, keys=identifier.piece_index.values
+            )
+        else:
+            concatenated_frames = concat_method(list_of_dataframes)
         return cls.from_df(
             df=concatenated_frames, configuration=configuration, identifier=identifier
         )
@@ -337,8 +372,8 @@ class Stack(StackID, ConfiguredDataframe):
     @classmethod
     def from_df(
         cls,
-        df: Union[SomeDataframe, ConfiguredDataframe],
-        configuration: Optional[Union[FacetConfig, FeatureConfig]] = None,
+        df: Union[SomeDataframe, ConfiguredDataframe, WrappedDataframe],
+        configuration: Optional[Union[FacetConfig, FeatureConfig, ResultConfig]] = None,
         identifier: Optional[PieceStackIdentifier] = None,
         **kwargs,
     ) -> Self:
@@ -368,15 +403,23 @@ class Stack(StackID, ConfiguredDataframe):
             df=df, configuration=configuration, identifier=identifier, **kwargs
         )
 
-    def get_piece(self, piece_id: PieceID):
-        df = self.df.loc[piece_id,]
-        constructor = typestring2type(self.dtype)
+    def _make_piece(self, piece_id: PieceID, df: SomeDataframe):
         identifier = PieceIdentifier(piece_id=piece_id)
-        return constructor.from_config(
+        chunk = self.constructor.from_config(
             config=self.configuration,
             df=df,
             identifier=identifier,
         )
+        return chunk
+
+    def get_piece(self, piece_id: PieceID):
+        df = self.df.loc[piece_id,]
+        return self._make_piece(piece_id=piece_id, df=df)
+
+    def iter_pieces(self) -> Iterator[ConfiguredDataframe]:
+        """Iter"""
+        for piece_id in self.piece_index:
+            yield self.get_piece(piece_id)
 
 
 def typestrings2types(

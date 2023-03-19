@@ -27,7 +27,7 @@ class FacetAnalyzer(Analyzer):
 
 
 class NotesAnalyzer(FacetAnalyzer):
-    result_type = "NotesResult"
+    _result_type = "NotesResult"
 
     def __init__(self, **kwargs):
         """Analyzers that work on notes tables."""
@@ -36,7 +36,7 @@ class NotesAnalyzer(FacetAnalyzer):
 
 
 class ChordSymbolAnalyzer(FacetAnalyzer):
-    result_type = "ChordSymbolResult"
+    _result_type = "ChordSymbolResult"
 
     def __init__(self, **kwargs):
         """Analyzers that work on expanded annotation tables."""
