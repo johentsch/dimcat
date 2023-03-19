@@ -188,7 +188,7 @@ def get_facet2feature_dict() -> Dict[FacetName, FeatureName]:
 def facet2available_features(facet_name: FacetName) -> List[FeatureName]:
     facet_name = str2facet_name(facet_name)
     facet2features = get_facet2feature_dict()
-    return facet2features[facet_name]
+    return facet2features.get(facet_name, [])
 
 
 def str2feature_name(name: Union[str, FeatureName]) -> FeatureName:

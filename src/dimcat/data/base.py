@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from typing import Dict, Iterator, List, Optional, Tuple, Type, Union
+from typing import Collection, Dict, Iterator, List, Optional, Tuple, Type, Union
 
 import pandas as pd
 from dimcat.base import Configuration, Data, PieceStackIdentifier, PipelineStep, Stack
@@ -38,11 +38,17 @@ class Dataset(Data):
 
     # region Initialization
 
-    def __init__(self, data: Optional[Dataset] = None, **kwargs):
+    def __init__(
+        self,
+        data: Optional[Dataset] = None,
+        piece_index: Optional[PieceIndex] = None,
+        **kwargs,
+    ):
         """The central type of object that all :obj:`PipelineSteps <.PipelineStep>` process and return a copy of.
 
         Args:
             data: Instantiate from this Dataset by copying its fields, empty fields otherwise.
+            piece_index: Used to create a subset of the given Dataset.
             **kwargs: Dataset is cooperative and calls super().__init__(data=dataset, **kwargs)
         """
         super().__init__(data=data, **kwargs)
@@ -61,13 +67,18 @@ class Dataset(Data):
         self.piece_index: PieceIndex = PieceIndex([])
         """List of PieceIDs used for accessing individual pieces of data and
         associated metadata. A PieceID is a ('corpus', 'piece') NamedTuple."""
-
         self.pipeline_steps: List[PipelineStep] = []
         """The sequence of applied PipelineSteps that has led to the current state."""
 
         if data is not None:
             # If subclasses have a different logic of copying fields, they can override these methods
-            self._init_piece_index_from_dataset(data)
+            if piece_index is None:
+                self._init_piece_index_from_dataset(data)
+            else:
+                if isinstance(piece_index, PieceIndex):
+                    self.piece_index = piece_index
+                else:
+                    self.piece_index = PieceIndex(piece_index)
             self._init_pieces_from_dataset(data)
             self._init_pipeline_steps_from_dataset(data)
             self._init_loaders_from_dataset(data)
@@ -88,7 +99,7 @@ class Dataset(Data):
 
     def copy(self, **kwargs) -> Self:
         """Return a copy of the Dataset."""
-        return self.__class__(dataset=self, **kwargs)
+        return self.__class__(data=self, **kwargs)
 
     # endregion Initialization
 
@@ -320,6 +331,9 @@ class Dataset(Data):
             raise StopIteration(
                 f"Previously applied PipelineSteps do not include any {of_type}: {self.pipeline_steps}"
             )
+
+    def subset(self, piece_index=Union[PieceIndex, Collection[PieceID]]) -> Self:
+        return self.copy(piece_index=piece_index)
 
     # endregion Data access
 
