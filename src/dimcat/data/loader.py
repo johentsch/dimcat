@@ -2,7 +2,6 @@ import logging
 import os
 import re
 from collections import defaultdict
-from dataclasses import replace
 from typing import (
     Collection,
     Dict,
@@ -19,19 +18,16 @@ from typing import (
 
 import ms3
 import pandas as pd
-from dimcat.base import Configuration
+from dimcat.base import Configuration, PieceStackIdentifier, StackID
 from dimcat.data.facet import (
     Available,
-    DefaultStackedFacetConfig,
     Facet,
     FacetConfig,
     FacetID,
     FacetName,
     StackedFacet,
-    StackedFacetConfig,
-    StackedFacetID,
+    facet_argument2config,
     get_stacked_facet_class,
-    str2facet_name,
 )
 from dimcat.data.piece import DcmlPiece, DcmlPieceBySlicing, PPiece
 from dimcat.dtypes import PathLike, PieceID, PieceIndex
@@ -39,17 +35,6 @@ from dimcat.utils.constants import DCML_FACETS
 from dimcat.utils.functions import resolve_dir
 
 logger = logging.getLogger(__name__)
-
-
-def facet_argument2config(facet=Union[FacetName, Configuration]) -> StackedFacetConfig:
-    if isinstance(facet, Configuration):
-        config = StackedFacetConfig.from_dataclass(facet)
-        if isinstance(config.dtype, str):
-            config = replace(config, dtype=FacetName(config.dtype))
-    else:
-        facet_name = str2facet_name(facet)
-        config = DefaultStackedFacetConfig(dtype=facet_name)
-    return config
 
 
 @runtime_checkable
@@ -87,9 +72,7 @@ class DcmlLoader(PLoader):
         ...
 
     @overload
-    def get_facet(
-        self, facet=Union[FacetName, StackedFacetID, StackedFacetConfig, FacetConfig]
-    ) -> StackedFacet:
+    def get_facet(self, facet=Union[FacetName, StackID, FacetConfig]) -> StackedFacet:
         ...
 
     def get_facet(
@@ -97,18 +80,22 @@ class DcmlLoader(PLoader):
     ) -> Union[StackedFacet, Facet]:
         config = facet_argument2config(facet)
         facet_name = config.dtype
-        selected_ids = None
-        if isinstance(facet, StackedFacetID):
-            selected_ids = facet.piece_index
+        piece_index = None
+        if isinstance(facet, StackID):
+            piece_index = facet.piece_index
         elif isinstance(facet, FacetID):
-            selected_ids = [facet.piece_id]
+            piece_index = PieceIndex([facet.piece_id])
         config2facet_objects: Dict[FacetConfig, Dict[PieceID, Facet]] = defaultdict(
             dict
         )
         for piece_obj in self.iter_pieces():
-            if selected_ids is not None and piece_obj.piece_id not in selected_ids:
+            if piece_index is not None and piece_obj.piece_id not in piece_index:
                 continue
-            facet_obj = piece_obj.get_facet(facet=facet)
+            try:
+                facet_obj = piece_obj.get_facet(facet=facet)
+            except Exception:
+                logger.debug(f"{facet} not available for {piece_obj.piece_id}")
+                continue
             facet_config = FacetConfig.from_dataclass(facet_obj)
             config2facet_objects[facet_config][facet_obj.piece_id] = facet_obj
         if len(config2facet_objects) > 1:
@@ -120,13 +107,17 @@ class DcmlLoader(PLoader):
         piece_ids = []
         for config, facet_objects in config2facet_objects.items():
             concatenated_per_config.append(
-                config.concat_method(facet_objects, names=["corpus", "piece", "i"])
+                config.concat_method(
+                    facet_objects, names=["corpus", "piece", f"{facet_name}_i"]
+                )
             )
             piece_ids.extend(facet_objects.keys())
         facet_constructor = get_stacked_facet_class(facet_name)
-        piece_index = PieceIndex(piece_ids)
+        if piece_index is None:
+            piece_index = PieceIndex(piece_ids)
+        identifier = PieceStackIdentifier(piece_index=piece_index)
         result = facet_constructor.from_df(
-            df=concatenated_per_config[0], piece_index=piece_index, file_path=None
+            df=concatenated_per_config[0], configuration=config, identifier=identifier
         )
         return result
 
@@ -219,9 +210,10 @@ class StackedFacetLoader(PLoader):
             logger.debug(f"Loading {file_path}...")
             stacked_df = ms3.load_tsv(file_path, index_col=[0, 1, 2])
             piece_index = PieceIndex(self.facet2ids[facet_name])
+            identifier = PieceStackIdentifier(piece_index=piece_index)
             facet_class = get_stacked_facet_class(facet_name)
             self.facet_store[facet_name] = facet_class.from_df(
-                df=stacked_df, piece_index=piece_index, file_path=file_path
+                df=stacked_df, identifier=identifier
             )
         else:
             logger.debug(f"Using previously loaded {file_path}...")
@@ -232,9 +224,7 @@ class StackedFacetLoader(PLoader):
         ...
 
     @overload
-    def get_facet(
-        self, facet=Union[FacetName, StackedFacetID, StackedFacetConfig, FacetConfig]
-    ) -> StackedFacet:
+    def get_facet(self, facet=Union[FacetName, StackID, FacetConfig]) -> StackedFacet:
         ...
 
     def get_facet(
@@ -242,7 +232,7 @@ class StackedFacetLoader(PLoader):
     ) -> Union[StackedFacet, Facet]:
         config = facet_argument2config(facet)
         facet_name = config.dtype
-        if isinstance(facet, StackedFacetID):
+        if isinstance(facet, StackID):
             available_ids = self.facet2ids[facet_name]
             selected_ids = set(facet.piece_index).intersection(set(available_ids))
             if len(selected_ids) == 0:
@@ -254,7 +244,7 @@ class StackedFacetLoader(PLoader):
         elif isinstance(facet, FacetID):
             if facet.piece_id in self.facet2ids[facet_name]:
                 stacked_facet = self._get_stored_facet(facet_name)
-                sliced_facet = stacked_facet.get_facet(facet.piece_id)
+                sliced_facet = stacked_facet.get_piece(facet.piece_id)
                 return sliced_facet
             raise KeyError(f"Piece ID not available: {facet.piece_id}")
         else:

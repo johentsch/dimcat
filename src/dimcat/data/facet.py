@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum, IntEnum, auto
 from functools import cached_property, lru_cache
 from typing import (
@@ -19,7 +19,14 @@ from typing import (
 )
 
 import pandas as pd
-from dimcat.base import Configuration, ConfiguredDataframe
+from dimcat.base import (
+    Configuration,
+    ConfiguredDataframe,
+    PieceIdentifier,
+    PieceStackIdentifier,
+    Stack,
+    StackConfig,
+)
 from dimcat.dtypes.base import (
     DataBackend,
     PieceID,
@@ -29,7 +36,7 @@ from dimcat.dtypes.base import (
     TypedSequence,
     WrappedSeries,
 )
-from dimcat.dtypes.sequence import Bigrams, ContiguousSequence, PieceIndex
+from dimcat.dtypes.sequence import Bigrams, ContiguousSequence
 from dimcat.utils.decorators import config_dataclass
 from dimcat.utils.functions import get_value_profile_mask
 from typing_extensions import Self
@@ -165,20 +172,9 @@ class DefaultFeatureConfig(FeatureConfig):
     ] = pd.concat
 
 
-@dataclass(frozen=True)
-class FeatureIdentifiers(Configuration):
-    """Fields serving to identify the facet of one particular piece."""
-
-    pass
-    # piece_id: PieceID
-    # file_path: str
-
-
 @config_dataclass(dtype=FeatureName, df_type=DataBackend)
-class FeatureID(FeatureIdentifiers, FeatureConfig):
-    """Config + Identifier"""
-
-    pass
+class FeatureID(FeatureConfig):
+    identifier: Union[PieceStackIdentifier, PieceIdentifier]
 
 
 @dataclass(frozen=True)
@@ -201,54 +197,13 @@ class DefaultFacetConfig(FacetConfig):
     concat_method: Callable[[Dict[PieceID, Facet], Sequence[str]], Facet] = pd.concat
 
 
-@dataclass(frozen=True)
-class FacetIdentifiers(Configuration):
-    """Fields serving to identify the facet of one particular piece."""
-
-    piece_id: PieceID
-    file_path: str
-
-
 @config_dataclass(dtype=FacetName, df_type=DataBackend)
 class FacetID(FacetConfig):
-    """Config + Identifier"""
+    identifier: Union[PieceStackIdentifier, PieceIdentifier]
 
-    identifier: Union[StackedFacetIdentifiers, FacetIdentifiers]
-
-
-@dataclass(frozen=True)
-class StackedFacetConfig(Configuration):
-    dtype: FacetName
-    df_type: DataBackend
-    unfold: bool
-    interval_index: bool
-    concat_method: Callable[[Dict[PieceID, Facet], Sequence[str]], Facet]
-
-
-@dataclass(frozen=True)
-class DefaultStackedFacetConfig(StackedFacetConfig):
-    """Configuration for any facet."""
-
-    dtype: FacetName
-    df_type: DataBackend = DataBackend.PANDAS
-    unfold: bool = False
-    interval_index: bool = True
-    concat_method: Callable[[Dict[PieceID, Facet], Sequence[str]], Facet] = pd.concat
-
-
-@dataclass(frozen=True)
-class StackedFacetIdentifiers(Configuration):
-    """Fields serving to identify the stacked facets of a set of pieces."""
-
-    piece_index: PieceIndex
-    file_path: str
-
-
-@config_dataclass(dtype=FacetName, df_type=DataBackend)
-class StackedFacetID(StackedFacetConfig, StackedFacetIdentifiers):
-    """Config + Identifier"""
-
-    pass
+    @property
+    def piece_id(self) -> PieceID:
+        return self.identifier.piece_id
 
 
 def feature_config2facet_config(feature: Configuration):
@@ -267,7 +222,6 @@ def feature_config2facet_config(feature: Configuration):
 class TabularFeature(FeatureID, ConfiguredDataframe):
     _config_type: ClassVar[Type[FeatureConfig]] = FeatureConfig
     _default_config_type: ClassVar[Type[DefaultFeatureConfig]] = DefaultFeatureConfig
-    _id_config_type: ClassVar[Type[FeatureIdentifiers]] = FeatureIdentifiers
     _id_type: ClassVar[Type[FeatureID]] = FeatureID
     _enum_type: ClassVar[Type[Enum]] = FeatureType
 
@@ -275,7 +229,7 @@ class TabularFeature(FeatureID, ConfiguredDataframe):
     def from_df(
         cls,
         df: SomeDataframe,
-        identifier: Optional[FeatureIdentifiers] = None,
+        identifier: Optional[Configuration] = None,
         **kwargs,
     ) -> Self:
         """Create a Feature from a dataframe and a :obj:`Configuration`. The required identifiers can be given either
@@ -296,7 +250,6 @@ class Facet(FacetID, ConfiguredDataframe):
 
     _config_type: ClassVar[Type[FacetConfig]] = FacetConfig
     _default_config_type: ClassVar[Type[DefaultFacetConfig]] = DefaultFacetConfig
-    _id_config_type: ClassVar[Type[FacetIdentifiers]] = FacetIdentifiers
     _id_type: ClassVar[Type[FacetID]] = FacetID
     _enum_type: ClassVar[Type[Enum]] = FacetName
 
@@ -306,6 +259,12 @@ class Facet(FacetID, ConfiguredDataframe):
     def config(self) -> FacetConfig:
         return self._config_type.from_dataclass(self)
 
+    @classmethod
+    @property
+    def dtype(cls) -> Enum:
+        """Name of the class as enum member."""
+        return cls._enum_type(cls.name)
+
     @property
     def ID(self) -> FacetID:
         return self._id_type.from_dataclass(self)
@@ -313,20 +272,27 @@ class Facet(FacetID, ConfiguredDataframe):
     @classmethod
     def from_df(
         cls,
-        df: SomeDataframe,
-        identifier: Optional[FacetIdentifiers] = None,
+        df: Union[SomeDataframe, ConfiguredDataframe],
+        identifier: Optional[PieceIdentifier] = None,
         **kwargs,
     ) -> Self:
         """Create a Facet from a dataframe and a :obj:`Configuration`. The required identifiers can be given either
         as :obj:`FacetIdentifiers`, or as keyword arguments. In addition, keyword arguments can be used to override
         values in the given configuration.
         """
+        if identifier is None:
+            try:
+                identifier = PieceIdentifier.from_dataclass(df)
+            except Exception:
+                raise ValueError(
+                    f"{type(df)!r} could not be turned into an identifier and none was given."
+                )
         return cls.from_default(df=df, identifier=identifier, **kwargs)
 
     @classmethod
     def get_default_config(cls, **kwargs) -> DefaultFacetConfig:
         kwargs["dtype"] = cls.dtype
-        return cls._default_config_type(**kwargs)
+        return cls._default_config_type.from_dict(kwargs)
 
     # endregion Default methods repeated for type hints
 
@@ -336,10 +302,6 @@ class Facet(FacetID, ConfiguredDataframe):
         """
         series: SomeSeries = self.df[feature]
         return WrappedSeries(series)
-
-    @property
-    def piece_id(self) -> PieceID:
-        return self.identifier.piece_id
 
 
 @dataclass(frozen=True)
@@ -385,7 +347,6 @@ class Measures(Facet):
     pass
 
 
-@dataclass(frozen=True)
 class Notes(Facet):
     @cached_property
     def tpc(self) -> TypedSequence:
@@ -475,83 +436,16 @@ def get_facet_class(name: Union[FacetName, str]) -> Type[Facet]:
 # region StackedFacet
 
 
-@config_dataclass(dtype=FacetName, df_type=DataBackend)
-class StackedFacet(StackedFacetID, ConfiguredDataframe):
-    """Several facets stacked. De facto they are concatenated but the MultiIndex enables extracting them
-    individually.
-    """
-
-    _config_type: ClassVar[Type[StackedFacetConfig]] = StackedFacetConfig
-    _default_config_type: ClassVar[
-        Type[DefaultStackedFacetConfig]
-    ] = DefaultStackedFacetConfig
-    _id_config_type: ClassVar[Type[StackedFacetIdentifiers]] = StackedFacetIdentifiers
-    _id_type: ClassVar[Type[StackedFacetID]] = StackedFacetID
-    _enum_type: ClassVar[Type[Enum]] = FacetName
-
-    # region Default methods repeated for type hints
-
-    @property
-    def config(self) -> StackedFacetConfig:
-        return self._config_type.from_dataclass(self)
-
-    @property
-    def ID(self) -> StackedFacetID:
-        return self._id_type.from_dataclass(self)
-
-    @classmethod
-    def from_df(
-        cls,
-        df: SomeDataframe,
-        identifier: Optional[StackedFacetIdentifiers] = None,
-        **kwargs,
-    ) -> Self:
-        """Create a Facet from a dataframe and a :obj:`Configuration`. The required identifiers can be given either
-        as :obj:`FacetIdentifiers`, or as keyword arguments. In addition, keyword arguments can be used to override
-        values in the given configuration.
-        """
-        return cls.from_default(df=df, identifier=identifier, **kwargs)
-
-    @classmethod
-    def get_default_config(cls, **kwargs) -> DefaultStackedFacetConfig:
-        kwargs["dtype"] = cls.dtype
-        return cls._default_config_type(**kwargs)
-
-    # endregion Default methods repeated for type hints
-
-    def get_feature(self, feature: Union[FeatureName, FeatureConfig]) -> TabularFeature:
-        """In its basic form, get one of the columns as a :obj:`WrappedSeries`.
-        Subclasses may offer additional features, such as transformed columns or subsets of the table.
-        """
-        if isinstance(feature, Configuration):
-            if isinstance(feature, FeatureID):
-                raise NotImplementedError("Not accepting IDs as of now, only configs.")
-            feature_config = FeatureConfig.from_dataclass(feature)
-            feature_name = feature_config.feature_name
-        else:
-            feature_name = str2feature_name(feature)
-            feature_config = DefaultFeatureConfig(dtype=feature_name)
-        selected_columns = self.df.columns.to_list()[:6] + [feature_name.value]
-        feature = TabularFeature.from_config(
-            config=feature_config, df=self.df[selected_columns]
-        )
-        return feature
-
-    def get_facet(self, piece_id: PieceID) -> Facet:
-        try:
-            sliced = self.df.loc[piece_id,]
-        except KeyError:
-            raise KeyError(
-                f"This {self.name} cannot be subscripted with '{piece_id}'. Pass a PieceID"
-            )
-        facet_constructor = get_facet_class(self.dtype)
-        return facet_constructor.from_id(
-            config_id=self, df=sliced, piece_id=piece_id, file_path=self.file_path
-        )
+@dataclass(frozen=True)
+class StackedFacet(Stack):
+    _config_type: ClassVar[Type[FacetConfig]]
+    _default_config_type: ClassVar[Type[DefaultFacetConfig]]
+    _id_type: ClassVar[Type[Configuration]]
+    _enum_type: ClassVar[Type[Enum]]
 
 
 @dataclass(frozen=True)
-class StackedMeasures(StackedFacet):
+class StackedMeasures(StackedFacet, Measures):
     pass
 
 
@@ -561,42 +455,46 @@ class StackedNotes(StackedFacet):
 
 
 @dataclass(frozen=True)
-class StackedRests(StackedFacet):
+class StackedRests(StackedFacet, Rests):
     pass
 
 
 @dataclass(frozen=True)
-class StackedNotesAndRests(StackedFacet):
+class StackedNotesAndRests(StackedFacet, NotesAndRests):
     pass
 
 
 @dataclass(frozen=True)
-class StackedLabels(StackedFacet):
+class StackedLabels(StackedFacet, Labels):
     pass
 
 
 @dataclass(frozen=True)
 class StackedHarmonies(StackedFacet):
+    @classmethod
+    def get_default_config(cls, **kwargs) -> StackConfig:
+        if "configuration" not in kwargs:
+            kwargs["configuration"] = DefaultFacetConfig(dtype=FacetName.Harmonies)
+        return super().get_default_config(**kwargs)
+
+
+@dataclass(frozen=True)
+class StackedFormLabels(StackedFacet, FormLabels):
     pass
 
 
 @dataclass(frozen=True)
-class StackedFormLabels(StackedFacet):
+class StackedCadences(StackedFacet, Cadences):
     pass
 
 
 @dataclass(frozen=True)
-class StackedCadences(StackedFacet):
+class StackedEvents(StackedFacet, Events):
     pass
 
 
 @dataclass(frozen=True)
-class StackedEvents(StackedFacet):
-    pass
-
-
-@dataclass(frozen=True)
-class StackedPositions(StackedFacet):
+class StackedPositions(StackedFacet, Positions):
     pass
 
 
@@ -636,28 +534,18 @@ if __name__ == "__main__":
     import ms3
 
     file_path = "~/corelli/harmonies/op01n01a.tsv"
-    df = ms3.load_tsv(file_path)
-    harmonies1 = Harmonies.from_default(
-        dtype="Harmonies",
-        df=df,
-        df_type=DataBackend.PANDAS,
-        unfold=False,
-        interval_index=True,
-        concat_method=pd.concat,
-        piece_id=PieceID("corelli", "op01n01a"),
-        file_path=file_path,
-    )
-    f_cfg = Harmonies.get_default_config()
     id_dict = dict(
         piece_id=PieceID("corelli", "op01n01a"),
-        file_path=file_path,
     )
-    f_id = FacetIdentifiers(**id_dict)
+    f_id = PieceIdentifier.from_dict(id_dict)
+    df = ms3.load_tsv(file_path)
+    harmonies1 = Harmonies.from_default(df=df, identifier=f_id)
+    f_cfg = Harmonies.get_default_config()
     harmonies2 = Harmonies.from_config(df=df, config=f_cfg, identifier=f_id)
     assert harmonies1 == harmonies2
     harmonies3 = Harmonies.from_id(config_id=harmonies2, df=df)
     assert harmonies2 == harmonies3
-    harmonies4 = Harmonies.from_df(df=df, **id_dict)
+    harmonies4 = Harmonies.from_df(df=df, identifier=f_id)
     assert harmonies3 == harmonies4
     chords_as_sequence = ContiguousSequence(
         harmonies2.get_feature(FeatureName.LOCALKEY)
@@ -673,3 +561,14 @@ if __name__ == "__main__":
         f"Modulations in the globalkey {harmonies2.globalkey}: {harmonies2.get_localkey_bigrams()}"
     )
     # c = Cadences()
+
+
+def facet_argument2config(facet=Union[FacetName, Configuration]) -> FacetConfig:
+    if isinstance(facet, Configuration):
+        config = FacetConfig.from_dataclass(facet)
+        if isinstance(config.dtype, str):
+            config = replace(config, dtype=FacetName(config.dtype))
+    else:
+        facet_name = str2facet_name(facet)
+        config = DefaultFacetConfig(dtype=FacetName(facet_name))
+    return config

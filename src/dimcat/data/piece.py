@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Dict,
@@ -13,35 +13,21 @@ from typing import (
 )
 
 import ms3
-from dimcat.base import Configuration, Data
+from dimcat.base import Configuration, Data, PieceIdentifier
 from dimcat.data.facet import (
     Available,
-    DefaultFacetConfig,
     Facet,
-    FacetConfig,
     FacetID,
-    FacetIdentifiers,
     FacetName,
     PFacet,
+    facet_argument2config,
     get_facet_class,
-    str2facet_name,
 )
 from dimcat.dtypes import PieceID
 from dimcat.utils.constants import DCML_FACETS
 
 if TYPE_CHECKING:
     from dimcat.data.loader import StackedFacetLoader
-
-
-def facet_argument2config(facet=Union[FacetName, Configuration]) -> FacetConfig:
-    if isinstance(facet, Configuration):
-        config = FacetConfig.from_dataclass(facet)
-        if isinstance(config.dtype, str):
-            config = replace(config, dtype=FacetName(config.dtype))
-    else:
-        facet_name = str2facet_name(facet)
-        config = DefaultFacetConfig(dtype=FacetName(facet_name))
-    return config
 
 
 @runtime_checkable
@@ -153,7 +139,7 @@ class DcmlPiece(Data):
     def get_facet(self, facet=Union[FacetName, Configuration]) -> Facet:
         config = facet_argument2config(facet)
         availability = self.check_facet_availability(config)
-        identifier = FacetIdentifiers(piece_id=self.piece_id, file_path="")
+        identifier = PieceIdentifier(piece_id=self.piece_id)
         facet_id = FacetID.from_dataclass(config=config, identifier=identifier)
         if availability is Available.AVAILABLE:
             keyword = self._facet2internal_keyword(config.dtype)

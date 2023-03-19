@@ -6,21 +6,19 @@ from collections import defaultdict
 from typing import Dict, Iterator, List, Optional, Tuple, Type, Union
 
 import pandas as pd
-from dimcat.base import Configuration, Data, PipelineStep
+from dimcat.base import Configuration, Data, PieceStackIdentifier, PipelineStep, Stack
 from dimcat.data.facet import (
     Available,
     DefaultFeatureConfig,
     Facet,
     FacetConfig,
-    FacetID,
     FacetName,
     FeatureConfig,
     FeatureID,
     FeatureName,
     StackedFacet,
-    StackedFacetConfig,
-    StackedFacetID,
     TabularFeature,
+    facet_argument2config,
     feature_config2facet_config,
     get_stacked_facet_class,
     str2feature_name,
@@ -28,7 +26,6 @@ from dimcat.data.facet import (
 from dimcat.data.loader import PLoader, StackedFacetLoader, infer_data_loader
 from dimcat.data.piece import PPiece
 from dimcat.dtypes import PieceID, PieceIndex
-from dimcat.dtypes.base import SomeFeature
 from IPython.display import display
 from typing_extensions import Self
 
@@ -58,7 +55,7 @@ class Dataset(Data):
         Controlled through the property :attr:`pieces` which returns a copy and cannot be modified directly.
         """
 
-        self._cache: Dict[Configuration, SomeFeature] = {}
+        self._cache: Dict[Configuration, Union[Stack, StackedFacet]] = {}
 
         self.piece_index: PieceIndex = PieceIndex([])
         """List of PieceIDs used for accessing individual pieces of data and
@@ -206,6 +203,10 @@ class Dataset(Data):
         for PID in self.piece_index:
             yield self.get_piece(PID)
 
+    def _get_cached_facet(self, config: FacetConfig) -> Optional[StackedFacet]:
+        if config in self._cache:
+            return self._cache[config]
+
     def get_facet(self, facet: Union[FacetName, Configuration]) -> StackedFacet:
         """Retrieve the facet from all selected pieces, stacked.
 
@@ -215,20 +216,16 @@ class Dataset(Data):
         Returns:
 
         """
-        if isinstance(facet, Configuration):
-            if isinstance(facet, (StackedFacetID, FacetID)):
-                raise NotImplementedError("Not accepting IDs as of now, only configs.")
-            stacked_facet_config = StackedFacetConfig.from_dataclass(facet)
-        else:
-            facet_class = get_stacked_facet_class(facet)
-            stacked_facet_config = facet_class.get_default_config()
-        if stacked_facet_config in self._cache:
-            return self._cache[stacked_facet_config]
-        config2stacked_facet_objects: Dict[StackedFacetConfig] = defaultdict(list)
+        config = facet_argument2config(facet)
+        cached_facet = self._get_cached_facet(config)
+        if cached_facet is not None:
+            return cached_facet
+        config2stacked_facet_objects: Dict[FacetConfig] = defaultdict(list)
         for loader in self.loaders:
-            stacked_facet = loader.get_facet(facet)
-            config = StackedFacetConfig.from_dataclass(stacked_facet)
-            config2stacked_facet_objects[config].append(stacked_facet)
+            stacked_facet = loader.get_facet(config)
+            config2stacked_facet_objects[stacked_facet.configuration].append(
+                stacked_facet
+            )
         if len(config2stacked_facet_objects) > 1:
             raise NotImplementedError(
                 f"Currently, facets with diverging configs cannot be concatenated:\n"
@@ -236,20 +233,20 @@ class Dataset(Data):
             )
         concatenated_per_config = []
         for config, stacked_facet_objects in config2stacked_facet_objects.items():
-            stacked_facet_dfs = pd.concat(stacked_facet_objects)
+            stacked_facet_dfs = config.concat_method(stacked_facet_objects)
             piece_ids = []
             for sfo in stacked_facet_objects:
                 piece_ids.extend(sfo.piece_index)
             piece_index = PieceIndex(piece_ids)
+            identifier = PieceStackIdentifier(piece_index=piece_index)
             facet_constructor = get_stacked_facet_class(config.dtype)
             stacked_facet = facet_constructor.from_df(
-                df=stacked_facet_dfs, piece_index=piece_index, file_path=None
+                df=stacked_facet_dfs, configuration=config, identifier=identifier
             )
             concatenated_per_config.append(stacked_facet)
 
         result = concatenated_per_config[0]
-        stacked_facet_config = StackedFacetConfig.from_dataclass(result)
-        self._cache[stacked_facet_config] = result
+        self._cache[config] = result
         return result
 
     def get_feature(self, feature: Union[FeatureName, Configuration]) -> TabularFeature:

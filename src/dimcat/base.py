@@ -188,17 +188,17 @@ class ConfiguredObjectMixin(ABC):
     def config(self) -> Configuration:
         return self._config_type.from_dataclass(self)
 
-    @property
-    def ID(self) -> Configuration:
-        return self._id_type.from_dataclass(self)
-
     @classmethod
     @property
     def dtype(cls) -> Union[Enum, str]:
-        """Name of the class as enum member."""
+        """Name of the class as enum member (if cls._enum_type is define, string otherwise)."""
         if hasattr(cls, "_enum_type"):
             return cls._enum_type(cls.name)
         return cls.name
+
+    @property
+    def ID(self) -> Configuration:
+        return self._id_type.from_dataclass(self)
 
     @classmethod
     def from_config(
@@ -271,6 +271,10 @@ class DefaultStackConfig(StackConfig):
 class StackID(StackConfig):
     identifier: PieceStackIdentifier
 
+    @property
+    def piece_index(self) -> PieceIndex:
+        return self.identifier.piece_index
+
 
 @dataclass(frozen=True)
 class Stack(StackID, ConfiguredDataframe):
@@ -342,6 +346,7 @@ class Stack(StackID, ConfiguredDataframe):
             try:
                 configuration = df.config
             except AttributeError:
+                pass
                 raise ValueError(
                     f"{type(df)!r} is not a configured object and no configuration was given."
                 )
@@ -362,6 +367,9 @@ class Stack(StackID, ConfiguredDataframe):
         return cls.from_default(
             df=df, configuration=configuration, identifier=identifier, **kwargs
         )
+
+    def get_piece(self, piece_id: PieceID):
+        return self.df.loc[piece_id,]
 
 
 def typestrings2types(typestrings: Union[str, Collection[str]]) -> Tuple[type]:
