@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from abc import ABC
 from dataclasses import dataclass, replace
 from enum import Enum, IntEnum, auto
 from functools import cached_property, lru_cache
@@ -33,7 +34,6 @@ from dimcat.dtypes.base import (
     SomeDataframe,
     SomeFeature,
     SomeSeries,
-    TypedSequence,
     WrappedSeries,
 )
 from dimcat.dtypes.sequence import Bigrams, ContiguousSequence
@@ -305,22 +305,24 @@ class Facet(FacetID, ConfiguredDataframe):
 
 
 @dataclass(frozen=True)
-class Cadences(Facet):
+class CadencesMixin(ABC):
     pass
 
 
 @dataclass(frozen=True)
-class Events(Facet):
+class EventsMixin(ABC):
     pass
 
 
 @dataclass(frozen=True)
-class FormLabels(Facet):
+class FormLabelsMixin(ABC):
     pass
 
 
 @dataclass(frozen=True)
-class Harmonies(Facet):
+class HarmoniesMixin(ABC):
+    facet_name = FacetName.Harmonies
+
     @cached_property
     def globalkey(self) -> str:
         return self.get_feature(feature=FeatureName.GLOBALKEY)[0]
@@ -338,29 +340,80 @@ class Harmonies(Facet):
 
 
 @dataclass(frozen=True)
-class Labels(Facet):
+class LabelsMixin(ABC):
     pass
 
 
 @dataclass(frozen=True)
-class Measures(Facet):
+class MeasuresMixin(ABC):
     pass
 
 
-class Notes(Facet):
-    @cached_property
-    def tpc(self) -> TypedSequence:
+class NotesMixin(ABC):
+    facet_name = FacetName.Notes
+
+    def tpc(self) -> WrappedSeries:
         series = self.get_feature(FeatureName.TPC)
-        return TypedSequence(series)
+        return WrappedSeries(series)
 
 
 @dataclass(frozen=True)
-class NotesAndRests(Facet):
+class NotesAndRestsMixin(ABC):
     pass
 
 
 @dataclass(frozen=True)
-class Positions(Facet):
+class PositionsMixin(ABC):
+    pass
+
+
+@dataclass(frozen=True)
+class RestsMixin(ABC):
+    pass
+
+
+@dataclass(frozen=True)
+class Cadences(Facet, CadencesMixin):
+    pass
+
+
+@dataclass(frozen=True)
+class Events(Facet, EventsMixin):
+    pass
+
+
+@dataclass(frozen=True)
+class FormLabels(Facet, FormLabelsMixin):
+    pass
+
+
+@dataclass(frozen=True)
+class Harmonies(Facet, HarmoniesMixin):
+    pass
+
+
+@dataclass(frozen=True)
+class Labels(Facet, LabelsMixin):
+    pass
+
+
+@dataclass(frozen=True)
+class Measures(Facet, MeasuresMixin):
+    pass
+
+
+@dataclass(frozen=True)
+class Notes(Facet, NotesMixin):
+    pass
+
+
+@dataclass(frozen=True)
+class NotesAndRests(Facet, NotesAndRestsMixin):
+    pass
+
+
+@dataclass(frozen=True)
+class Positions(Facet, PositionsMixin):
     pass
 
 
@@ -443,58 +496,67 @@ class StackedFacet(Stack):
     _id_type: ClassVar[Type[Configuration]]
     _enum_type: ClassVar[Type[Enum]]
 
+    def get_feature(self, feature: Union[str, Enum]) -> WrappedSeries:
+        """In its basic form, get one of the columns as a :obj:`WrappedSeries`.
+        Subclasses may offer additional features, such as transformed columns or subsets of the table.
+        """
+        series: SomeSeries = self.df[feature]
+        return WrappedSeries(series)
 
-@dataclass(frozen=True)
-class StackedMeasures(StackedFacet, Measures):
-    pass
-
-
-@dataclass(frozen=True)
-class StackedNotes(StackedFacet):
-    pass
-
-
-@dataclass(frozen=True)
-class StackedRests(StackedFacet, Rests):
-    pass
-
-
-@dataclass(frozen=True)
-class StackedNotesAndRests(StackedFacet, NotesAndRests):
-    pass
-
-
-@dataclass(frozen=True)
-class StackedLabels(StackedFacet, Labels):
-    pass
-
-
-@dataclass(frozen=True)
-class StackedHarmonies(StackedFacet):
     @classmethod
     def get_default_config(cls, **kwargs) -> StackConfig:
         if "configuration" not in kwargs:
-            kwargs["configuration"] = DefaultFacetConfig(dtype=FacetName.Harmonies)
+            kwargs["configuration"] = DefaultFacetConfig(dtype=cls.facet_name)
         return super().get_default_config(**kwargs)
 
 
 @dataclass(frozen=True)
-class StackedFormLabels(StackedFacet, FormLabels):
+class StackedCadences(StackedFacet, CadencesMixin):
     pass
 
 
 @dataclass(frozen=True)
-class StackedCadences(StackedFacet, Cadences):
+class StackedEvents(StackedFacet, EventsMixin):
     pass
 
 
 @dataclass(frozen=True)
-class StackedEvents(StackedFacet, Events):
+class StackedFormLabels(StackedFacet, FormLabelsMixin):
     pass
 
 
 @dataclass(frozen=True)
-class StackedPositions(StackedFacet, Positions):
+class StackedHarmonies(StackedFacet, HarmoniesMixin):
+    pass
+
+
+@dataclass(frozen=True)
+class StackedLabels(StackedFacet, LabelsMixin):
+    pass
+
+
+@dataclass(frozen=True)
+class StackedMeasures(StackedFacet, MeasuresMixin):
+    pass
+
+
+@dataclass(frozen=True)
+class StackedNotes(StackedFacet, NotesMixin):
+    pass
+
+
+@dataclass(frozen=True)
+class StackedNotesAndRests(StackedFacet, NotesAndRestsMixin):
+    pass
+
+
+@dataclass(frozen=True)
+class StackedPositions(StackedFacet, PositionsMixin):
+    pass
+
+
+@dataclass(frozen=True)
+class StackedRests(StackedFacet, RestsMixin):
     pass
 
 
