@@ -185,12 +185,26 @@ class Dataset(Data):
     def available_facets(
         self, min_availability: Optional[Available] = None
     ) -> Dict[PieceID, Dict[FacetName, Available]]:
-        availability = {
-            piece.piece_id: piece.get_available_facets(
+        availability = {}
+        for piece in self.iter_pieces():
+            piece_id = piece.piece_id
+            available_facets = piece.get_available_facets(
                 min_availability=min_availability
             )
-            for piece in self.iter_pieces()
-        }
+            if piece_id in availability:
+                existing = availability[piece_id]
+                logger.info(
+                    f"The available facets of {piece_id}, {existing} "
+                    f"will be updated with those of {piece}, {available_facets}."
+                )
+                available_facets = {
+                    fac: avail
+                    for fac, avail in available_facets.items()
+                    if fac not in existing or existing[fac] < avail
+                }
+                existing.update(available_facets)
+            else:
+                availability[piece_id] = available_facets
         return availability
 
     def get_piece(self, PID: Union[PieceID, Tuple[str, str]]) -> PPiece:
