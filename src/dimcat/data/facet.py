@@ -81,9 +81,9 @@ class FacetName(str, Enum):
         return tuple(cls(c) for c in facets)
 
     Cadences = "Cadences"
-    ChordSymbols = "Labels"
+    ChordSymbols = "ChordSymbols"
     Events = "Events"
-    FormLabels = "FormChordSymbols"
+    FormLabels = "FormLabels"
     Harmonies = "Harmonies"
     Markup = "Markup"
     Measures = "Measures"
@@ -93,9 +93,9 @@ class FacetName(str, Enum):
     Phrases = "Phrases"
     Rests = "Rests"
     StackedCadences = "StackedCadences"
-    StackedChordSymbols = "StackedLabels"
+    StackedChordSymbols = "StackedChordSymbols"
     StackedEvents = "StackedEvents"
-    StackedFormLabels = "StackedFormChordSymbols"
+    StackedFormLabels = "StackedFormLabels"
     StackedHarmonies = "StackedHarmonies"
     StackedMarkup = "StackedMarkup"
     StackedMeasures = "StackedMeasures"
