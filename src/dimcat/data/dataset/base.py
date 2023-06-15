@@ -24,6 +24,7 @@ from typing import (
     Iterator,
     List,
     Literal,
+    MutableMapping,
     Optional,
     Tuple,
     TypeAlias,
@@ -573,6 +574,16 @@ class DimcatPackage(Data):
         return self.get_resource("metadata").df
 
     def get_resource_by_config(self, config: DimcatConfig) -> DimcatResource:
+        """Returns the first resource that matches the given config."""
+        if isinstance(config, DimcatConfig):
+            pass
+        elif isinstance(config, MutableMapping):
+            config = DimcatConfig(config)
+        else:
+            raise TypeError(f"Expected DimcatConfig or MutableMapping, got {config!r}")
+        return self._get_resource_by_config(config)
+
+    def _get_resource_by_config(self, config: DimcatConfig) -> DimcatResource:
         """Returns the first resource that matches the given config."""
         for resource in self.resources:
             resource_config = resource.to_config()
