@@ -16,6 +16,7 @@ from typing import (
 
 import frictionless as fl
 import marshmallow as mm
+import pandas as pd
 from dimcat.base import DimcatConfig, ObjectEnum, get_class, get_setting, is_subclass_of
 from dimcat.data.resources.base import D, ResourceStatus
 from dimcat.data.resources.dc import DimcatResource
@@ -430,6 +431,30 @@ class Feature(DimcatResource):
             result = feature_df.copy()
         else:
             result = feature_df.dropna(subset=self._feature_columns, how="any")
+        has_quarterbeats = (
+            "quarterbeats" in result.columns
+            or "quarterbeats_all_endings" in result.columns
+        )
+        if "qstamp" not in result.columns and has_quarterbeats:
+            # turn quarterbeats into qstamp
+            if "quarterbeats_all_endings" in result.columns:
+                qb_column = result.quarterbeats_all_endings
+                qb_column = qb_column.where(qb_column != "")
+                if qb_column.isna().any() and "quarterbeats" in result.columns:
+                    qb_column = qb_column.fillna(
+                        result.quarterbeats.where(result.quarterbeats != "")
+                    )
+            else:
+                qb_column = result.quarterbeats
+                qb_column = qb_column.where(qb_column != "")
+            if qb_column.isna().any():
+                self.logger.warning(
+                    f"Not creating 'qstamp' column because resource {self.resource_name!r} has NA values in column "
+                    f"{qb_column.name!r}."
+                )
+            else:
+                qstamp = qb_column.astype(float).rename("qstamp")
+                result = pd.concat([qstamp, result], axis=1)
         return result
 
     def _treat_columns(self) -> None:
@@ -649,7 +674,7 @@ def feature_specs2config(feature: FeatureSpecs) -> DimcatConfig:
         feature_config = DimcatConfig(feature_config["options"])
     if not is_subclass_of(feature_config.options_dtype, Feature):
         raise TypeError(
-            f"DimcatConfig describes a {feature_config.options_dtype}, not a Feature: "
+            f"DimcatConfig describes dtype {feature_config.options_dtype!r} which is not a Feature: "
             f"{feature_config.options}"
         )
     return feature_config

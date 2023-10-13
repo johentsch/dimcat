@@ -702,6 +702,7 @@ class DimcatSettings(DimcatObject):
         default_factory=lambda: [
             "mc",
             "mn",
+            "qstamp",
             "quarterbeats",
             "quarterbeats_all_endings",
             "duration_qb",
