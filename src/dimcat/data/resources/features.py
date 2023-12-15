@@ -32,8 +32,9 @@ from dimcat.dc_exceptions import (
     ResourceIsMissingPieceIndexError,
 )
 from dimcat.utils import get_middle_composition_year
+from numpy._typing import NDArray
 
-logger = logging.getLogger(__name__)
+module_logger = logging.getLogger(__name__)
 
 
 class Metadata(Feature):
@@ -902,29 +903,43 @@ def make_phrase_selection_masks(
     phraseends,
     start_symbol="{",
     end_symbol=r"\\",
-    n_before: int = 1,
-    n_after: int = 1,
-):
+    n_before: int = 0,
+    n_after: int = 0,
+    logger: Optional[logging.Logger] = None,
+) -> NDArray[bool]:
+    """Returns an LxN array in which each column is a boolean mask selecting one of the N phrases from the original
+    dataframe of length L.
+    """
+    if logger is None:
+        logger = module_logger
     present_symbols = phraseends.unique()
     has_start = start_symbol in present_symbols
     has_end = end_symbol in present_symbols
+    if not (has_start or has_end):
+        return
     if has_start and has_end:
         raise NotImplementedError(
             f"Currently I can create phrases either based on end symbols or on start symbols, but this df has both, "
             f"{start_symbol} and {end_symbol}"
         )
-    if has_end:
-        mask = phraseends.str.contains(end_symbol).fillna(False).reset_index(drop=True)
-        groups = mask[::-1].cumsum()[::-1]
-    else:
+    ix_length = len(phraseends)
+    if has_start:
         mask = (
             phraseends.str.contains(start_symbol).fillna(False).reset_index(drop=True)
         )
-        groups = mask.cumsum()
-    N = len(groups)
-    masks = []
-    for _, ix in groups.groupby(groups, sort=False).indices.items():
-        from_i, to_i = ix.min(), ix.max() + 1
+        starts = mask.index[mask].to_list()
+        ix_intervals = [(fro, to) for fro, to in zip(starts, starts[1:] + [ix_length])]
+    else:
+        mask = phraseends.str.contains(end_symbol).fillna(False).reset_index(drop=True)
+        ends = (mask.index[mask] + 1).to_list()
+        if ends[0] == 1:
+            logger.warning(
+                f"First phrase starts with a phrase ending symbol {end_symbol}."
+            )
+        ix_intervals = [(fro, to) for fro, to in zip([0] + ends, ends)]
+    n_phrases = len(ix_intervals)
+    masks = np.zeros((ix_length, n_phrases), dtype=bool)
+    for phrase_j, (from_i, to_i) in enumerate(ix_intervals):
         if n_before:
             new_from = from_i - n_before
             if new_from >= 0:
@@ -933,9 +948,7 @@ def make_phrase_selection_masks(
                 from_i = 0
         if n_after:
             to_i += n_after  # may surpass N
-        phrase_mask = np.array([False] * N, dtype=bool)
-        phrase_mask[from_i:to_i] = True
-        masks.append(phrase_mask)
+        masks[from_i:to_i, phrase_j] = True
     return masks
 
 

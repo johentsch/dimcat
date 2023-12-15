@@ -7,6 +7,8 @@ from dimcat.data.resources import DimcatIndex
 from dimcat.steps import groupers
 from dimcat.utils import resolve_path
 
+from src.dimcat.data.resources.features import make_phrase_selection_masks
+
 
 def resource_names(path):
     return os.sep.join(path.split(os.sep)[-2:])
@@ -49,6 +51,7 @@ def get_piece_groups(dataset):
 
 
 if __name__ == "__main__":
-    D = load_distant_listening_corpus()
-    filtered_D = D.apply_step("HasHarmonyLabelsFilter")
-    all_metadata = filtered_D.get_metadata()
+    D = load_unittest_corpora()
+    labels = D.get_feature("HarmonyLabels")
+    masks = make_phrase_selection_masks(labels.df)
+    print(masks)
