@@ -134,12 +134,18 @@ def align_with_grouping(
 def apply_slice_intervals_to_resource_df(
     df: pd.DataFrame,
     slice_intervals: pd.MultiIndex,
-    start_column_name: str = "quarterbeats",
+    qstamp_column_name: str = "quarterbeats",
     duration_column_name: str = "duration_qb",
     logger: Optional[logging.Logger] = None,
 ) -> pd.DataFrame:
     if logger is None:
         logger = module_logger
+    check_qstamp_columns(
+        df=df,
+        qstamp_column_name=qstamp_column_name,
+        duration_column_name=duration_column_name,
+        logger=logger,
+    )
     *grouping_levels, slice_name = list(slice_intervals.names)
     interval_index_level = slice_intervals.get_level_values(-1)
     group2intervals: Dict[tuple, pd.IntervalIndex] = interval_index_level.groupby(
@@ -156,7 +162,7 @@ def apply_slice_intervals_to_resource_df(
             continue
         time_spans, clean_group_df = get_time_spans_from_resource_df(
             df=group_df,
-            start_column_name=start_column_name,
+            qstamp_column_name=qstamp_column_name,
             duration_column_name=duration_column_name,
             dropna=True,
             return_df=True,
@@ -167,7 +173,7 @@ def apply_slice_intervals_to_resource_df(
             lefts=time_spans.start.values,
             rights=time_spans.end.values,
             intervals=ivls,
-            start_column_name=start_column_name,
+            qstamp_column_name=qstamp_column_name,
             duration_column_name=duration_column_name,
             logger=logger,
         )
@@ -176,6 +182,29 @@ def apply_slice_intervals_to_resource_df(
 
 def boolean_is_minor_column_to_mode(S: pd.Series) -> pd.Series:
     return S.map({True: "minor", False: "major"})
+
+
+def check_qstamp_columns(
+    df: D,
+    qstamp_column_name: str,
+    duration_column_name: str,
+    logger: Optional[logging.Logger] = None,
+) -> None:
+    if logger is None:
+        logger = module_logger
+    if not all(c in df.columns for c in (qstamp_column_name, duration_column_name)):
+        missing = [
+            c for c in (qstamp_column_name, duration_column_name) if c not in df.columns
+        ]
+        plural = "s" if len(missing) > 1 else ""
+        raise RuntimeError(
+            f"Column{plural} not present in DataFrame: {', '.join(missing)}"
+        )
+    for col in (qstamp_column_name, duration_column_name):
+        if df[col].isna().any():
+            logger.warning(
+                f"Column {col!r} has missing values which may lead to unintended results."
+            )
 
 
 def condense_dataframe_by_groups(
@@ -411,7 +440,7 @@ def get_existing_normpath(fl_resource) -> str:
 @overload
 def get_time_spans_from_resource_df(
     df: pd.DataFrame,
-    start_column_name: str,
+    qstamp_column_name: str,
     duration_column_name: str,
     round: Optional[int],
     to_float: bool,
@@ -425,7 +454,7 @@ def get_time_spans_from_resource_df(
 @overload
 def get_time_spans_from_resource_df(
     df: pd.DataFrame,
-    start_column_name: str,
+    qstamp_column_name: str,
     duration_column_name: str,
     round: Optional[int],
     to_float: bool,
@@ -438,7 +467,7 @@ def get_time_spans_from_resource_df(
 
 def get_time_spans_from_resource_df(
     df,
-    start_column_name: str = "quarterbeats",
+    qstamp_column_name: str = "quarterbeats",
     duration_column_name: str = "duration_qb",
     round: Optional[int] = None,
     to_float: bool = True,
@@ -460,17 +489,10 @@ def get_time_spans_from_resource_df(
     """
     if logger is None:
         logger = module_logger
-    if not all(c in df.columns for c in (start_column_name, duration_column_name)):
-        missing = [
-            c for c in (start_column_name, duration_column_name) if c not in df.columns
-        ]
-        plural = "s" if len(missing) > 1 else ""
-        raise RuntimeError(
-            f"Column{plural} not present in DataFrame: {', '.join(missing)}"
-        )
+    check_qstamp_columns(df, qstamp_column_name, duration_column_name, logger=logger)
     available_mask = (
-        df[start_column_name].notna()
-        & (df[start_column_name] != "")
+        df[qstamp_column_name].notna()
+        & (df[qstamp_column_name] != "")
         & df[duration_column_name].notna()
         & (df[duration_column_name] != "")
     )
@@ -487,7 +509,7 @@ def get_time_spans_from_resource_df(
         if not dropna:
             original_index = df.index
         df = df[available_mask].copy()
-    start = df[start_column_name]
+    start = df[qstamp_column_name]
     duration_col = df[duration_column_name]
     end = start + duration_col
     if to_float or round is not None:
@@ -1040,16 +1062,20 @@ def overlapping_chunk_per_interval_cutoff_direct(
     lefts: NDArray,
     rights: NDArray,
     intervals: pd.IntervalIndex,
-    start_column_name: str = "quarterbeats",
+    qstamp_column_name: str = "quarterbeats",
     duration_column_name: str = "duration_qb",
     logger: Optional[logging.Logger] = None,
 ) -> pd.DataFrame:
-    """
+    """The heart of a slicing operation, which returns a dataframe that corresponds to the input dataframe sliced
+    by the intervals present in the ``intervals`` :obj:`pandas.IntervalIndex`, which will be included as the first
+    index level of the result dataframe.
 
     Args:
         df: DataFrame to be sliced.
         lefts: Same-length array expressing the start point of every row.
         rights: Same-length array expressing the end point (exclusive) of every row.
+        qstamp_column_name:
+            Name of the column in which qstamp (offset from the timeline's origin) is to be found.
         duration_column_name:
             Name of the column in the chunk dfs where the new event durations will be stored as floats. Defaults to
             "duration_qb", resulting in the existing values being updated.
@@ -1059,13 +1085,17 @@ def overlapping_chunk_per_interval_cutoff_direct(
             increasing, which allows us to speed up this expensive operation.
 
     Returns:
-        For each interval, the corresponding chunk of the DataFrame. Each chunk comes with a
-        :obj`pandas.IntervalIndex` reflecting the new lefts and rights including those that reflect the slicing of
-        events which overlapped the embracing interval. The only values that are changed, compared to the original
-        DataFrame, are those in the column
+        Concatenation of the dataframe chunks corresponding to each of the given interval. The first index level of the
+        resulting dataframe is a :obj`pandas.IntervalIndex` which corresponds to the ``intervals``.
     """
     if logger is None:
         logger = module_logger
+    check_qstamp_columns(
+        df=df,
+        qstamp_column_name=qstamp_column_name,
+        duration_column_name=duration_column_name,
+        logger=logger,
+    )
     if not intervals.is_non_overlapping_monotonic:
         logger.warning(
             f"Intervals are not non-overlapping and/or not monotonically increasing:\n{intervals}"
@@ -1091,7 +1121,7 @@ def overlapping_chunk_per_interval_cutoff_direct(
         if starting_before_l.sum() > 0 or ending_after_r.sum() > 0:
             new_lefts[starting_before_l] = l
             new_rights[ending_after_r] = r
-            chunk[start_column_name] = new_lefts
+            chunk[qstamp_column_name] = new_lefts
             chunk[duration_column_name] = (new_rights - new_lefts).round(5)
         chunks[interval] = chunk
     level_names = [intervals.name] + df.index.names
