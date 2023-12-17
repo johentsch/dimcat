@@ -13,6 +13,7 @@ from dimcat.data.resources.dc import (
     HARMONY_FEATURE_NAMES,
     DimcatIndex,
     Feature,
+    Playthrough,
     SliceIntervals,
     UnitOfAnalysis,
 )
@@ -196,6 +197,7 @@ class DcmlAnnotations(Annotations):
         """Called by :meth:`_prepare_feature_df` to transform the resource dataframe into a feature dataframe.
         Assumes that the dataframe can be mutated safely, i.e. that it is a copy.
         """
+        feature_df = self._apply_playthrough(feature_df)
         feature_df = extend_keys_feature(feature_df)
         return self._sort_columns(feature_df)
 
@@ -478,22 +480,29 @@ class HarmonyLabels(DcmlAnnotations):
         basepath: Optional[str] = None,
         auto_validate: bool = False,
         default_groupby: Optional[str | list[str]] = None,
+        playthrough: Playthrough = Playthrough.SINGLE,
     ) -> None:
         """
 
         Args:
+            format:
+                Format to display the chord labels in. ROMAN stands for Roman numerals,
+                ROMAN_REDUCED for the same numerals without any suspensions, alterations, additions,
+                etc.
             resource: An existing :obj:`frictionless.Resource`.
             descriptor_filename:
                 Relative filepath for using a different JSON/YAML descriptor filename than the default
-                :func:`get_descriptor_filename`. Needs to on one of the file extensions defined in the
+                :func:`get_descriptor_filename`. Needs to end on one of the file extensions defined in the
                 setting ``package_descriptor_endings`` (by default 'resource.json' or 'resource.yaml').
-            basepath: Where the file would be serialized.
+            basepath: Where to store serialization data and its descriptor by default.
             auto_validate:
                 By default, the DimcatResource will not be validated upon instantiation or change (but always before
                 writing to disk). Set True to raise an exception during creation or modification of the resource,
                 e.g. replacing the :attr:`column_schema`.
-            default_groupby:
-                Pass a list of column names or index levels to groupby something else than the default (by piece).
+            default_groupby: Name of the fields for grouping this resource (usually after a Grouper has been applied).
+            playthrough:
+                Defaults to ``Playthrough.SINGLE``, meaning that first-ending (prima volta) bars are dropped in order
+                to exclude incorrect transitions and adjacencies between the first- and second-ending bars.
         """
         super().__init__(
             format=format,
@@ -502,6 +511,7 @@ class HarmonyLabels(DcmlAnnotations):
             basepath=basepath,
             auto_validate=auto_validate,
             default_groupby=default_groupby,
+            playthrough=playthrough,
         )
 
     @property
@@ -559,6 +569,7 @@ class HarmonyLabels(DcmlAnnotations):
         """Called by :meth:`_prepare_feature_df` to transform the resource dataframe into a feature dataframe.
         Assumes that the dataframe can be mutated safely, i.e. that it is a copy.
         """
+        feature_df = self._apply_playthrough(feature_df)
         feature_df = self._drop_rows_with_missing_values(
             feature_df, column_names=self._feature_column_names
         )
@@ -754,6 +765,7 @@ class BassNotes(HarmonyLabels):
         """Called by :meth:`_prepare_feature_df` to transform the resource dataframe into a feature dataframe.
         Assumes that the dataframe can be mutated safely, i.e. that it is a copy.
         """
+        feature_df = self._apply_playthrough(feature_df)
         feature_df = self._drop_rows_with_missing_values(
             feature_df, column_names=self._feature_column_names
         )
@@ -830,7 +842,30 @@ class CadenceLabels(DcmlAnnotations):
         basepath: Optional[str] = None,
         auto_validate: bool = True,
         default_groupby: Optional[str | list[str]] = None,
+        playthrough: Playthrough = Playthrough.SINGLE,
     ) -> None:
+        """
+
+        Args:
+            format:
+                Format to display the cadence labels in. RAW stands for 'as-is'. TYPE omits the
+                subtype, reducing more specific labels, whereas SUBTYPE displays subtypes only,
+                omitting all labels that do not specify one.
+            resource: An existing :obj:`frictionless.Resource`.
+            descriptor_filename:
+                Relative filepath for using a different JSON/YAML descriptor filename than the default
+                :func:`get_descriptor_filename`. Needs to end on one of the file extensions defined in the
+                setting ``package_descriptor_endings`` (by default 'resource.json' or 'resource.yaml').
+            basepath: Where to store serialization data and its descriptor by default.
+            auto_validate:
+                By default, the DimcatResource will not be validated upon instantiation or change (but always before
+                writing to disk). Set True to raise an exception during creation or modification of the resource,
+                e.g. replacing the :attr:`column_schema`.
+            default_groupby: Name of the fields for grouping this resource (usually after a Grouper has been applied).
+            playthrough:
+                Defaults to ``Playthrough.SINGLE``, meaning that first-ending (prima volta) bars are dropped in order
+                to exclude incorrect transitions and adjacencies between the first- and second-ending bars.
+        """
         super().__init__(
             format=format,
             resource=resource,
@@ -838,6 +873,7 @@ class CadenceLabels(DcmlAnnotations):
             basepath=basepath,
             auto_validate=auto_validate,
             default_groupby=default_groupby,
+            playthrough=playthrough,
         )
 
     @property
@@ -868,6 +904,7 @@ class CadenceLabels(DcmlAnnotations):
         """Called by :meth:`_prepare_feature_df` to transform the resource dataframe into a feature dataframe.
         Assumes that the dataframe can be mutated safely, i.e. that it is a copy.
         """
+        feature_df = self._apply_playthrough(feature_df)
         try:
             feature_df = extend_keys_feature(feature_df)
         except DataframeIsMissingExpectedColumnsError:
@@ -890,6 +927,7 @@ class KeyAnnotations(DcmlAnnotations):
         """Called by :meth:`_prepare_feature_df` to transform the resource dataframe into a feature dataframe.
         Assumes that the dataframe can be mutated safely, i.e. that it is a copy.
         """
+        feature_df = self._apply_playthrough(feature_df)
         feature_df = extend_keys_feature(feature_df)
         groupby_levels = feature_df.index.names[:-1]
         group_keys, _ = make_adjacency_groups(
@@ -1031,7 +1069,35 @@ class PhraseAnnotations(DcmlAnnotations):
         basepath: Optional[str] = None,
         auto_validate: bool = True,
         default_groupby: Optional[str | list[str]] = None,
+        playthrough: Playthrough = Playthrough.SINGLE,
     ) -> None:
+        """
+
+        Args:
+            n_before:
+                By default, each phrase includes information about the included labels from beginning to end. Specify a
+                larger integer in order to include additional information on the n labels preceding the phrase. These
+                are generally part of a previous phrase.
+            n_after:
+                By default, each phrase includes information about the included labels from beginning to end. Specify a
+                larger integer in order to include additional information on the n labels following the phrase. These
+                are generally part of a subsequent phrase.
+            format:
+            resource: An existing :obj:`frictionless.Resource`.
+            descriptor_filename:
+                Relative filepath for using a different JSON/YAML descriptor filename than the default
+                :func:`get_descriptor_filename`. Needs to end on one of the file extensions defined in the
+                setting ``package_descriptor_endings`` (by default 'resource.json' or 'resource.yaml').
+            basepath: Where to store serialization data and its descriptor by default.
+            auto_validate:
+                By default, the DimcatResource will not be validated upon instantiation or change (but always before
+                writing to disk). Set True to raise an exception during creation or modification of the resource,
+                e.g. replacing the :attr:`column_schema`.
+            default_groupby: Name of the fields for grouping this resource (usually after a Grouper has been applied).
+            playthrough:
+                Defaults to ``Playthrough.SINGLE``, meaning that first-ending (prima volta) bars are dropped in order
+                to exclude incorrect transitions and adjacencies between the first- and second-ending bars.
+        """
         super().__init__(
             format=format,
             resource=resource,
@@ -1039,6 +1105,7 @@ class PhraseAnnotations(DcmlAnnotations):
             basepath=basepath,
             auto_validate=auto_validate,
             default_groupby=default_groupby,
+            playthrough=playthrough,
         )
         self.n_before = n_before
         self.n_after = n_after
@@ -1047,6 +1114,7 @@ class PhraseAnnotations(DcmlAnnotations):
         """Called by :meth:`_prepare_feature_df` to transform the resource dataframe into a feature dataframe.
         Assumes that the dataframe can be mutated safely, i.e. that it is a copy.
         """
+        feature_df = self._apply_playthrough(feature_df)
         feature_df = extend_keys_feature(feature_df)
         groupby_levels = feature_df.index.names[:-1]
         group_intervals = get_index_intervals_for_phrases(
@@ -1155,8 +1223,11 @@ class Notes(Feature):
             metadata=dict(
                 title="Merge tied notes",
                 expose=True,
-                description="If set, notes that are tied together in the score are merged together, counting them "
-                "as a single event of the corresponding length. Otherwise, every note head is counted.",
+                description="If False (default), each row corresponds to a note head, even if it does not the full "
+                "duration of the represented sounding event or even an onset. Setting to True results in "
+                "notes being tied over to from a previous note to be merged into a single note with the "
+                "summed duration. After the transformation, only note heads that actually represent a note "
+                "onset remain.",
             ),
         )
         weight_grace_notes = mm.fields.Float(
@@ -1180,7 +1251,37 @@ class Notes(Feature):
         basepath: Optional[str] = None,
         auto_validate: bool = True,
         default_groupby: Optional[str | list[str]] = None,
+        playthrough: Playthrough = Playthrough.SINGLE,
     ) -> None:
+        """
+
+        Args:
+            format:
+                :attr:`format`. Format to display the notes in. The default NAME stands for note names, FIFTHS for
+                the number of fifths from C, and MIDI for MIDI numbers.
+            merge_ties:
+                If False (default), each row corresponds to a note head, even if it does not the full duration of the
+                represented sounding event or even an onset. Setting to True results in notes being tied over to from a
+                previous note to be merged into a single note with the summed duration. After the transformation,
+                only note heads that actually represent a note onset remain.
+            weight_grace_notes:
+                Set a factor > 0.0 to multiply the nominal duration of grace notes which, otherwise, have duration 0
+                and are therefore excluded from many statistics.
+            resource: An existing :obj:`frictionless.Resource`.
+            descriptor_filename:
+                Relative filepath for using a different JSON/YAML descriptor filename than the default
+                :func:`get_descriptor_filename`. Needs to end on one of the file extensions defined in the
+                setting ``package_descriptor_endings`` (by default 'resource.json' or 'resource.yaml').
+            basepath: Where to store serialization data and its descriptor by default.
+            auto_validate:
+                By default, the DimcatResource will not be validated upon instantiation or change (but always before
+                writing to disk). Set True to raise an exception during creation or modification of the resource,
+                e.g. replacing the :attr:`column_schema`.
+            default_groupby: Name of the fields for grouping this resource (usually after a Grouper has been applied).
+            playthrough:
+                Defaults to ``Playthrough.SINGLE``, meaning that first-ending (prima volta) bars are dropped in order
+                to exclude incorrect transitions and adjacencies between the first- and second-ending bars.
+        """
         super().__init__(
             format=format,
             resource=resource,
@@ -1188,6 +1289,7 @@ class Notes(Feature):
             basepath=basepath,
             auto_validate=auto_validate,
             default_groupby=default_groupby,
+            playthrough=playthrough,
         )
         self._merge_ties = bool(merge_ties)
         self._weight_grace_notes = float(weight_grace_notes)
@@ -1228,6 +1330,7 @@ class Notes(Feature):
         """Called by :meth:`_prepare_feature_df` to transform the resource dataframe into a feature dataframe.
         Assumes that the dataframe can be mutated safely, i.e. that it is a copy.
         """
+        feature_df = self._apply_playthrough(feature_df)
         feature_df = self._drop_rows_with_missing_values(
             feature_df, column_names=self._feature_column_names
         )

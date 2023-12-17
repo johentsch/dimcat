@@ -30,6 +30,8 @@ import pandas as pd
 from dimcat.base import (
     DO,
     DimcatConfig,
+    FriendlyEnum,
+    FriendlyEnumField,
     LowercaseEnum,
     get_class,
     get_setting,
@@ -191,9 +193,9 @@ class DimcatResource(Resource, Generic[D]):
             descriptor: Descriptor corresponding to a frictionless resource descriptor.
             descriptor_filename:
                 Relative filepath for using a different JSON/YAML descriptor filename than the default
-                :func:`get_descriptor_filename`. Needs to on one of the file extensions defined in the
+                :func:`get_descriptor_filename`. Needs to end on one of the file extensions defined in the
                 setting ``package_descriptor_endings`` (by default 'resource.json' or 'resource.yaml').
-            basepath: Where the file would be serialized.
+            basepath: Where to store serialization data and its descriptor by default.
             auto_validate:
                 By default, the DimcatResource will not be validated upon instantiation or change (but always before
                 writing to disk). Set True to raise an exception during creation or modification of the resource,
@@ -256,7 +258,9 @@ class DimcatResource(Resource, Generic[D]):
             resource_name:
                 Name of the resource used for retrieving it from a DimcatPackage and as filename when the resource
                 is stored to a ZIP file.
-            basepath: Where the file would be serialized. If ``resource`` is a filepath, its directory is used.
+            basepath:
+                Where to store serialization data and its descriptor by default. If ``resource`` is a filepath, its
+                 directory is used.
             auto_validate:
                 By default, the DimcatResource will not be validated upon instantiation or change (but always before
                 writing to disk). Set True to raise an exception during creation or modification of the resource,
@@ -296,7 +300,7 @@ class DimcatResource(Resource, Generic[D]):
                 is stored to a ZIP file.
             descriptor_filename:
                 Relative filepath for using a different JSON/YAML descriptor filename than the default
-                :func:`get_descriptor_filename`. Needs to on one of the file extensions defined in the
+                :func:`get_descriptor_filename`. Needs to end on one of the file extensions defined in the
                 setting ``package_descriptor_endings`` (by default 'resource.json' or 'resource.yaml').
             auto_validate:
                 By default, the Resource will not be validated upon instantiation or change (but always before
@@ -358,7 +362,9 @@ class DimcatResource(Resource, Generic[D]):
             resource_name:
                 Name of the resource used for retrieving it from a DimcatPackage and as filename when the resource
                 is stored to a ZIP file.
-            basepath: Where the file would be serialized. If ``resource`` is a filepath, its directory is used.
+            basepath:
+                Where to store serialization data and its descriptor by default. If ``resource`` is a filepath, its
+                directory is used.
             auto_validate:
                 By default, the DimcatResource will not be validated upon instantiation or change (but always before
                 writing to disk). Set True to raise an exception during creation or modification of the resource,
@@ -406,7 +412,9 @@ class DimcatResource(Resource, Generic[D]):
             resource_name:
                 Name of the resource used for retrieving it from a DimcatPackage and as filename when the resource
                 is stored to a ZIP file.
-            basepath: Where the file would be serialized. If ``resource`` is a filepath, its directory is used.
+            basepath:
+                Where to store serialization data and its descriptor by default. If ``resource`` is a filepath, its
+                directory is used.
             auto_validate:
                 By default, the DimcatResource will not be validated upon instantiation or change (but always before
                 writing to disk). Set True to raise an exception during creation or modification of the resource,
@@ -493,8 +501,7 @@ class DimcatResource(Resource, Generic[D]):
             allow_none=True,
             metadata=dict(
                 expose=False,
-                description="Pass a list of column names or index levels to groupby something else than the default "
-                "(by piece).",
+                description="Name of the fields for grouping this resource (usually after a Grouper has been applied).",
             ),
         )
 
@@ -530,9 +537,9 @@ class DimcatResource(Resource, Generic[D]):
             resource: An existing :obj:`frictionless.Resource`.
             descriptor_filename:
                 Relative filepath for using a different JSON/YAML descriptor filename than the default
-                :func:`get_descriptor_filename`. Needs to on one of the file extensions defined in the
+                :func:`get_descriptor_filename`. Needs to end on one of the file extensions defined in the
                 setting ``package_descriptor_endings`` (by default 'resource.json' or 'resource.yaml').
-            basepath: Where the file would be serialized.
+            basepath: Where to store serialization data and its descriptor by default.
             auto_validate:
                 By default, the DimcatResource will not be validated upon instantiation or change (but always before
                 writing to disk). Set True to raise an exception during creation or modification of the resource,
@@ -1122,27 +1129,13 @@ DimcatResource.__init__(
 
         """
         df = self.df
-        if "quarterbeats_all_endings" in df.columns:
-            start_col = "quarterbeats_all_endings"
-            if "quarterbeats" in df.columns:
-                has_nan = df[start_col].isna().any()
-                has_empty_strings = df[start_col].eq("").any()
-                if has_nan or has_empty_strings:
-                    df = df.copy()
-                    if has_nan:
-                        df[start_col].fillna(df["quarterbeats"], inplace=True)
-                    if has_empty_strings:
-                        df[start_col].where(
-                            df[start_col].ne(""), df["quarterbeats"], inplace=True
-                        )
-        else:
-            start_col = "quarterbeats"
+        qstamp_col = "quarterbeats"
         self.logger.debug(
-            f"Using column {start_col!r} as for the left side of the computed time spans."
+            f"Using column {qstamp_col!r} as for the left side of the computed time spans."
         )
         return get_time_spans_from_resource_df(
             df=df,
-            start_column_name=start_col,
+            qstamp_column_name=qstamp_col,
             duration_column_name="duration_qb",
             round=round,
             to_float=to_float,
@@ -1889,8 +1882,40 @@ HARMONY_FEATURE_NAMES = (
 )
 
 
+class Playthrough(FriendlyEnum):
+    """Different types of behaviour regarding repeat structures encoded in score-releated data.
+
+    SINGLE:
+        (default) Represent data for a "single playthrough". If first and second endings are present the first (third,
+        etc.) are being dropped to exclude incorrect transitions and adjacencies between the first- and second-ending
+        bars.
+    RAW: Leave data as-is.
+
+    """
+
+    SINGLE = "SINGLE"
+    RAW = "RAW"
+
+
 class Feature(DimcatResource):
+    """A feature is a :class:`DimcatResource` that represents a single feature of a piece of music, generally some
+    subset and/or transformation of a :class:`Facet`. A feature resource usually represents one object per row and
+    has a defined temporality ('quarterbeats', at the very least) relative to the scores in question.
+    """
+
     _enum_type = FeatureName
+
+    class Schema(DimcatResource.Schema):
+        playthrough = FriendlyEnumField(
+            Playthrough,
+            load_default=Playthrough.SINGLE,
+            metadata=dict(
+                expose=True,
+                description="Defaults to ``Playthrough.SINGLE``, meaning that first-ending (prima volta) bars are "
+                "dropped in order to exclude incorrect transitions and adjacencies between the first- and "
+                "second-ending bars.",
+            ),
+        )
 
     def __init__(
         self,
@@ -1900,7 +1925,24 @@ class Feature(DimcatResource):
         basepath: Optional[str] = None,
         auto_validate: bool = True,
         default_groupby: Optional[str | list[str]] = None,
+        playthrough: Playthrough = Playthrough.SINGLE,
     ) -> None:
+        """
+
+        Args:
+            format: Defines the :attr:`format`.
+            resource: Resource to create this feature from.
+            descriptor_filename: Name of the resource descriptor (JSON) file.
+            basepath: Where to store serialization data and its descriptor by default.
+            auto_validate:
+                By default, the DimcatResource will not be validated upon instantiation or change (but always before
+                writing to disk). Set True to raise an exception during creation or modification of the resource,
+                e.g. replacing the :attr:`column_schema`.
+            default_groupby: Name of the fields for grouping this resource (usually after a Grouper has been applied).
+            playthrough:
+                Defaults to ``Playthrough.SINGLE``, meaning that first-ending (prima volta) bars are dropped in order
+                to exclude incorrect transitions and adjacencies between the first- and second-ending bars.
+        """
         super().__init__(
             resource=resource,
             descriptor_filename=descriptor_filename,
@@ -1911,6 +1953,12 @@ class Feature(DimcatResource):
         self._format = None
         if format is not None:
             self.format = format
+        self._playthrough = None
+        try:
+            playthrough = Playthrough(playthrough)
+        except ValueError:
+            raise ValueError(f"Expected Playthrough, got {playthrough!r}.")
+        self._playthrough = playthrough
 
     @property
     def format(self) -> None:
@@ -1923,6 +1971,43 @@ class Feature(DimcatResource):
                 f"Setting format for {self.name} is inconsequential because no setter has been defined.",
                 RuntimeWarning,
             )
+
+    @property
+    def playthrough(self) -> Playthrough:
+        return self._playthrough
+
+    def _apply_playthrough(self, feature_df: D) -> D:
+        """Transform a dataframe based on the resource's :attr:`playthrough` setting."""
+        if self.playthrough == Playthrough.RAW or "volta" not in feature_df.columns:
+            return feature_df
+        if not self.playthrough == Playthrough.SINGLE:
+            raise NotImplementedError(
+                f"Unknown Playthrough setting {self.playthrough!r}."
+            )
+        volta_values = feature_df.volta.unique()
+        if 3 in volta_values:
+            self.logger.info(
+                f"The {self.name} {self.resource_name!r} has more than two alternative endings. The "
+                f"Playthrough.SINGLE setting drops all but the seconda volta."
+            )
+        keep_mask = feature_df.volta.isna() | feature_df.volta.eq(2)
+        if keep_mask.all():
+            self.logger.info("No alternative endings which would need to be dropped.")
+            return feature_df
+        drop_values = feature_df.loc[~keep_mask, "volta"].value_counts().to_dict()
+        self.logger.debug(
+            f"Values and occurrences of the dropped alternative endings:\n{drop_values}"
+        )
+        result = feature_df[keep_mask]
+        if "quarterbeats_all_endings" in result.columns:
+            return result.drop(columns="quarterbeats_all_endings")
+        return result.copy()
+
+    def _format_dataframe(self, feature_df: D) -> D:
+        """Called by :meth:`_prepare_feature_df` to transform the resource dataframe into a feature dataframe.
+        Assumes that the dataframe can be mutated safely, i.e. that it is a copy.
+        """
+        return self._apply_playthrough(feature_df)
 
     def get_available_column_names(
         self,
