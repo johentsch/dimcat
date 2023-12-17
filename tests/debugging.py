@@ -7,7 +7,7 @@ from dimcat.data.resources import DimcatIndex
 from dimcat.steps import groupers
 from dimcat.utils import resolve_path
 
-from src.dimcat.data.resources.features import make_phrase_selection_masks
+from src.dimcat.data.resources.features import get_index_intervals_for_phrases
 
 
 def resource_names(path):
@@ -53,5 +53,5 @@ def get_piece_groups(dataset):
 if __name__ == "__main__":
     D = load_unittest_corpora()
     labels = D.get_feature("HarmonyLabels")
-    masks = make_phrase_selection_masks(labels.df)
+    masks = get_index_intervals_for_phrases(labels.df)
     print(masks)

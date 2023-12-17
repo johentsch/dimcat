@@ -1397,6 +1397,7 @@ class FeatureName(ObjectEnum):
     DcmlAnnotations = "DcmlAnnotations"
     HarmonyLabels = "HarmonyLabels"
     KeyAnnotations = "KeyAnnotations"
+    PhraseAnnotations = "PhraseAnnotations"
     Measures = "Measures"
     Metadata = "Metadata"
     Notes = "Notes"

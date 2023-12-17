@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import logging
-from typing import Callable, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import frictionless as fl
 import marshmallow as mm
 import ms3
-import numpy as np
 import pandas as pd
 from dimcat.base import FriendlyEnum, FriendlyEnumField
-from dimcat.data.resources.base import D, FeatureName
+from dimcat.data.resources.base import D, FeatureName, S
 from dimcat.data.resources.dc import (
     HARMONY_FEATURE_NAMES,
     DimcatIndex,
@@ -32,7 +31,7 @@ from dimcat.dc_exceptions import (
     ResourceIsMissingPieceIndexError,
 )
 from dimcat.utils import get_middle_composition_year
-from numpy._typing import NDArray
+from ms3 import reduce_dataframe_duration_to_first_row
 
 module_logger = logging.getLogger(__name__)
 
@@ -188,7 +187,10 @@ class DcmlAnnotations(Annotations):
     )
     _feature_column_names = ["label"]
     _default_value_column = "label"
-    _extractable_features = HARMONY_FEATURE_NAMES + (FeatureName.CadenceLabels,)
+    _extractable_features = HARMONY_FEATURE_NAMES + (
+        FeatureName.CadenceLabels,
+        FeatureName.PhraseAnnotations,
+    )
 
     def _format_dataframe(self, feature_df: D) -> D:
         """Called by :meth:`_prepare_feature_df` to transform the resource dataframe into a feature dataframe.
@@ -899,47 +901,67 @@ class KeyAnnotations(DcmlAnnotations):
         return self._sort_columns(feature_df)
 
 
-def make_phrase_selection_masks(
-    phraseends,
-    start_symbol="{",
-    end_symbol=r"\\",
+def _get_index_intervals_for_phrases(
+    markers: S,
+    start_symbol: str = "{",
+    end_symbol: str = r"\\",
     n_before: int = 0,
     n_after: int = 0,
     logger: Optional[logging.Logger] = None,
-) -> NDArray[bool]:
-    """Returns an LxN array in which each column is a boolean mask selecting one of the N phrases from the original
-    dataframe of length L.
+) -> List[Tuple[int, int]]:
+    """Expects a Series with a RangeIndex and computes (from, to) index position intervals based on the presence of
+    either the start_symbol or the end_symbol. If both are found, an error is thrown. If None is found, the result is
+    an empty list.
+
+    Args:
+        markers:
+            A Series containing either start or end symbols of phrases. Expected to have a RangeIndex. When the series
+            corresponds to a chunk of a larger one, the RangeIndex should correspond to the respective positions in
+            the original series.
+        start_symbol:
+            If this symbol is present in any of the series' strings, intervals will be formed starting from one to the
+            next occurrences (within strings). The interval for the last symbol reaches until the end of the series
+            (that is, the last index position + 1).
+        end_symbol:
+            If this symbol is present in any of the series' strings, intervals will be formed starting from the first
+            index position to the position of the first end_symbol + 1, and from there until one after the next, and
+            so on.
+        n_before: Pass a positive integer to have the intervals include n earlier positions.
+        n_after: Pass a positive integer to have the intervals include n subsequent positions.
+        logger:
+
+    Returns:
+        A list of (from, to) index positions that can be used for slicing rows of the dataframe from which the series
+        was taken.
     """
     if logger is None:
         logger = module_logger
-    present_symbols = phraseends.unique()
+    present_symbols = markers.unique()
     has_start = start_symbol in present_symbols
     has_end = end_symbol in present_symbols
     if not (has_start or has_end):
-        return
+        return []
     if has_start and has_end:
-        raise NotImplementedError(
-            f"Currently I can create phrases either based on end symbols or on start symbols, but this df has both, "
-            f"{start_symbol} and {end_symbol}"
+        logger.warning(
+            f"Currently I can create phrases either based on end symbols or on start symbols, but this df has both:"
+            f":\n{markers.value_counts().to_dict()}\nUsing {start_symbol}, ignoring {end_symbol}..."
         )
-    ix_length = len(phraseends)
+    ix_start = markers.index.min()
+    ix_end = markers.index.max() + 1
     if has_start:
-        mask = (
-            phraseends.str.contains(start_symbol).fillna(False).reset_index(drop=True)
-        )
+        mask = markers.str.contains(start_symbol).fillna(False)
         starts = mask.index[mask].to_list()
-        ix_intervals = [(fro, to) for fro, to in zip(starts, starts[1:] + [ix_length])]
+        ix_intervals = [(fro, to) for fro, to in zip(starts, starts[1:] + [ix_end])]
     else:
-        mask = phraseends.str.contains(end_symbol).fillna(False).reset_index(drop=True)
+        mask = markers.str.contains(end_symbol).fillna(False)
         ends = (mask.index[mask] + 1).to_list()
         if ends[0] == 1:
             logger.warning(
                 f"First phrase starts with a phrase ending symbol {end_symbol}."
             )
-        ix_intervals = [(fro, to) for fro, to in zip([0] + ends, ends)]
-    n_phrases = len(ix_intervals)
-    masks = np.zeros((ix_length, n_phrases), dtype=bool)
-    for phrase_j, (from_i, to_i) in enumerate(ix_intervals):
+        ix_intervals = [(fro, to) for fro, to in zip([ix_start] + ends, ends)]
+    result = []
+    for from_i, to_i in ix_intervals:
         if n_before:
             new_from = from_i - n_before
             if new_from >= 0:
@@ -947,26 +969,107 @@ def make_phrase_selection_masks(
             else:
                 from_i = 0
         if n_after:
-            to_i += n_after  # may surpass N
-        masks[from_i:to_i, phrase_j] = True
-    return masks
+            new_to = to_i + n_after
+            if new_to <= ix_start:
+                to_i = new_to
+            else:
+                to_i = ix_start
+        result.append((from_i, to_i))
+    return result
+
+
+def get_index_intervals_for_phrases(
+    harmony_labels: D,
+    group_cols: List[str],
+    start_symbol: str = "{",
+    end_symbol: str = r"\\",
+    n_before: int = 0,
+    n_after: int = 0,
+    logger: Optional[logging.Logger] = None,
+) -> Dict[Any, List[Tuple[int, int]]]:
+    """Returns a list of slice intervals for selecting the rows belonging to a phrase."""
+    if logger is None:
+        logger = module_logger
+    phraseends_reset = harmony_labels.reset_index()
+    group_intervals = {}
+    groupby = phraseends_reset.groupby(group_cols)
+    for group, markers in groupby.phraseend:
+        # try:
+        group_intervals[group] = _get_index_intervals_for_phrases(
+            markers,
+            start_symbol=start_symbol,
+            end_symbol=end_symbol,
+            n_before=n_before,
+            n_after=n_after,
+            logger=logger,
+        )
+        # except NotImplementedError as e:
+        #     concerned_df = groupby.get_group(group)
+        #     #raise NotImplementedError(concerned_df) from e
+        #     print(concerned_df)
+    return group_intervals
 
 
 class PhraseAnnotations(DcmlAnnotations):
-    _auxiliary_column_names = []
-    _convenience_column_names = []
-    _feature_column_names = []
+    _auxiliary_column_names = ["label", "localkey"]
+    _convenience_column_names = KEY_CONVENIENCE_COLUMNS
+    _feature_column_names = ["phraseend"]
     _extractable_features = None
     _default_value_column = "duration_qb"
+
+    class Schema(DcmlAnnotations.Schema):
+        n_before: mm.fields.Int()
+        n_after: mm.fields.Int()
+
+    def __init__(
+        self,
+        n_before: int = 0,
+        n_after: int = 0,
+        format=None,
+        resource: Optional[fl.Resource | str] = None,
+        descriptor_filename: Optional[str] = None,
+        basepath: Optional[str] = None,
+        auto_validate: bool = True,
+        default_groupby: Optional[str | list[str]] = None,
+    ) -> None:
+        super().__init__(
+            format=format,
+            resource=resource,
+            descriptor_filename=descriptor_filename,
+            basepath=basepath,
+            auto_validate=auto_validate,
+            default_groupby=default_groupby,
+        )
+        self.n_before = n_before
+        self.n_after = n_after
 
     def _format_dataframe(self, feature_df: D) -> D:
         """Called by :meth:`_prepare_feature_df` to transform the resource dataframe into a feature dataframe.
         Assumes that the dataframe can be mutated safely, i.e. that it is a copy.
         """
         feature_df = extend_keys_feature(feature_df)
-        # groupby_levels = feature_df.index.names[:-1]
-        # masks = make_phrase_selection_masks()
-        return self._sort_columns(feature_df)
+        groupby_levels = feature_df.index.names[:-1]
+        group_intervals = get_index_intervals_for_phrases(
+            harmony_labels=feature_df,
+            group_cols=groupby_levels,
+            n_before=self.n_before,
+            n_after=self.n_after,
+            logger=self.logger,
+        )
+        dfs = []
+        for group, intervals in group_intervals.items():
+            for from_i, to_i in intervals:
+                try:
+                    dfs.append(
+                        reduce_dataframe_duration_to_first_row(
+                            feature_df.iloc[from_i:to_i]
+                        )
+                    )
+                except Exception as e:
+                    print(f"group: {group}, interval: ({from_i}, {to_i}) caused {e}")
+                    continue
+        phrase_df = pd.concat(dfs)
+        return phrase_df  # self._sort_columns(phrase_df)
 
 
 # endregion Annotations
