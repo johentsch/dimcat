@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import logging
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
@@ -942,8 +943,8 @@ class KeyAnnotations(DcmlAnnotations):
 
 def _get_index_intervals_for_phrases(
     markers: S,
-    n_before: int = 0,
-    n_after: int = 0,
+    n_ante: int = 0,
+    n_post: int = 0,
     logger: Optional[logging.Logger] = None,
 ) -> List[Tuple[int, int, Optional[int], int, int]]:
     """Expects a Series with a RangeIndex and computes (from, to) index position intervals based on the presence of
@@ -967,8 +968,8 @@ def _get_index_intervals_for_phrases(
             A Series containing either start or end symbols of phrases. Expected to have a RangeIndex. When the series
             corresponds to a chunk of a larger one, the RangeIndex should correspond to the respective positions in
             the original series.
-        n_before: Pass a positive integer to have the intervals include n earlier positions.
-        n_after:
+        n_ante: Pass a positive integer to have the intervals include n earlier positions.
+        n_post:
             Pass a positive integer > 0 to have the intervals include n subsequent positions. The minimum is 1 because
             for new-style phrase endings (``}``) the end_symbol may actually appear only with the beginning of the
             subsequent phrase in the case of ``}{``.
@@ -978,12 +979,12 @@ def _get_index_intervals_for_phrases(
         A list of (first_i, start_i, end_i, subsequent_i, stop_i) index positions that can be used for slicing rows
         of the dataframe from which the series was taken. The meaning of the included slice intervals is as follows:
 
-        * ``[start_i:start_i)``: The n_before positions before the phrase.
+        * ``[start_i:start_i)``: The n_ante positions before the phrase.
         * ``[start_i:end_i]``: The body of the phrase, including end symbol.
         * ``[end_i:subsequent_i)``:
           The codetta, i.e., the part between the end_symbol and the subsequent phrase. In the case of phrase overlap,
           the two are identical and the codetta is empty.
-        * ``[subsequent_i:stop_i)``: The n_after positions after the phrase.
+        * ``[subsequent_i:stop_i)``: The n_post positions after the phrase.
     """
     if logger is None:
         logger = module_logger
@@ -1038,15 +1039,15 @@ def _get_index_intervals_for_phrases(
     result = []
     for start_i, end_i, subsequent_i in start_end_subsequent:
         first_i = start_i
-        if n_before:
-            new_first_i = start_i - n_before
+        if n_ante:
+            new_first_i = start_i - n_ante
             if new_first_i >= ix_min:
                 first_i = new_first_i
             else:
                 first_i = ix_min
         stop_i = subsequent_i
-        if n_after:
-            new_stop_i = subsequent_i + n_after
+        if n_post:
+            new_stop_i = subsequent_i + n_post
             if new_stop_i <= ix_max:
                 stop_i = new_stop_i
             else:
@@ -1058,8 +1059,8 @@ def _get_index_intervals_for_phrases(
 def get_index_intervals_for_phrases(
     harmony_labels: D,
     group_cols: List[str],
-    n_before: int = 0,
-    n_after: int = 0,
+    n_ante: int = 0,
+    n_post: int = 0,
     logger: Optional[logging.Logger] = None,
 ) -> Dict[Any, List[Tuple[int, int]]]:
     """Returns a list of slice intervals for selecting the rows belonging to a phrase."""
@@ -1070,154 +1071,70 @@ def get_index_intervals_for_phrases(
     groupby = phraseends_reset.groupby(group_cols)
     for group, markers in groupby.phraseend:
         first_start_end_sbsq_last = _get_index_intervals_for_phrases(
-            markers, n_before=n_before, n_after=n_after, logger=logger
+            markers, n_ante=n_ante, n_post=n_post, logger=logger
         )
         group_intervals[group] = first_start_end_sbsq_last
     return group_intervals
 
 
-#
-# def make_sequence_non_repeating(S: S) -> tuple:
-#     """Returns values in the given sequence without immediate repetitions."""
-#     return tuple(val for val, _ in itertools.groupby(S))
-#
-#
-# def reduce_phrase_dataframe_to_row(
-#     phrase_df: D,
-#     qstamp_col_position: int,
-#     duration_col_position: int,
-#     label_col_position: int,
-#     logger: logging.Logger,
-#     n_before: int = 0,
-#     n_after: int = 0,
-# ) -> pd.Series:
-#     """Reduces a DataFrame to a single row, where the original rows correspond to the harmony labels forming part of
-#     a single phrase and the resulting row contains information about the phrase as a whole.
-#
-#     Args:
-#         phrase_df:
-#             Dataframe to be condensed into one row. As a basis, the row where the phrase actually starts is used,
-#             as determined by the ``n_before`` parameter. The ``qb_duration`` value will be determined from the qstamp
-#             values of this first row and the row following the last row that is part of the phrase.
-#         qstamp_col_position:
-#             Integer position of the column containing the qstamp values, dispensing with repeated lookups.
-#         duration_col_position:
-#             Integer position of the column containing the duration values, dispensing with repeated lookups.
-#         label_col_position:
-#             Integer position of the column containing the label values, dispensing with repeated lookups.
-#         logger: Positional argument accepting the logger to be used.
-#         n_before:
-#         n_after:
-#
-#     Returns:
-#         Series representing one row.
-#     """
-#     if len(phrase_df) == 1:
-#         logger.warning(f"Phrase consists of a single row:\n{phrase_df.iloc[0]}")
-#     first_i, stop_i = n_before, -(1 + n_after)
-#     if n_after:
-#         phrase_itself = phrase_df.iloc[first_i : stop_i + 1]
-#     else:
-#         phrase_itself = phrase_df.iloc[first_i:]
-#     first_row = phrase_itself.iloc[0]
-#     last_row = phrase_df.iloc[-1]
-#     start_qstamp = first_row.iloc[qstamp_col_position]
-#     end_qstamp = last_row.iloc[qstamp_col_position] + last_row.iloc[duration_col_position]
-#     try:
-#         new_duration = float(end_qstamp - start_qstamp)
-#     except Exception:
-#         print(f"{qstamp_col_position}: {end_qstamp} - {start_qstamp}")
-#         raise
-#     row_values = first_row.to_dict()
-#     row_values["duration_qb"] = new_duration
-#     row_values["first_label"] = first_row.iloc[label_col_position]
-#     row_values["last_label"] = last_row.iloc[label_col_position]
-#     localkeys = make_sequence_non_repeating(phrase_itself.localkey)
-#     row_values["n_localkeys"] = len(localkeys)
-#     row_values["localkeys"] = localkeys
-#     chords = tuple(phrase_itself.loc[phrase_itself.chord.notna(), "chord"])
-#     row_values["n_chords"] = len(chords)
-#     row_values["chords"] = chords
-#     return pd.Series(row_values, name=first_row.name)
-#
-# def format_phrase_dataframe(
-#     phrase_df: D,
-#     format: PhraseFormat,
-#     start_i: int,
-#     end_i: Optional[int],
-#     subsequent_i: int,
-#     qstamp_col_position: int,
-#     duration_col_position: int,
-#     label_col_position: int,
-#         logger: logging.Logger,
-# ):
-#     start_qstamp = phrase_df.iloc[start_i, qstamp_col_position]
-#     if subsequent_i < len(phrase_df):
-#         subsequent_row = phrase_df.iloc[subsequent_i]
-#         end_qstamp = subsequent_row.iloc[qstamp_col_position]
-#     else:
-#         last_row = phrase_df.iloc[-1]
-#         end_qstamp = last_row.iloc[qstamp_col_position] + last_row.iloc[duration_col_position]
-#     interval = pd.Interval(start_qstamp, end_qstamp, closed="left")
-#     if format == PhraseFormat.RAW:
-#         phrase_df = pd.concat(group2df.values(), keys=group_names, names=["first_i", "stop_i"])
-#         return phrase_df
-#     if not format == PhraseFormat.CONDENSED:
-#         raise NotImplementedError(f"Unknown format {format!r}.")
-#
-# def _make_take_mask(
-#     first_i: int,
-#     start_i: int,
-#     end_i: Optional[int],
-#     subsequent_i: int,
-#     stop_i: int,
-#     before_name = "before",
-#     body_name = "body"
-# ) -> np.ndarray:
-#     """Returns a boolean mask for selecting the rows that are part of the phrase."""
-#     idx_level, take_mask = [], []
-#     n_before = start_i - first_i
-#     if n_before:
-#         idx_level.extend(itertools.repeat(before_name, n_before))
-#         take_mask.extend(range(first_i, start_i))
-#     if end_i is None:
-#         #
-#         end_i = subsequent_i - 1
-#         stop_phrase = end_i + 1
-#         n_body = stop_phrase - start_i
-#         idx_level.extend(itertools.repeat(body_name, n_body))
-#     return take_mask
-#
-#
-# def _get_formatted_phrase(
-#         feature_df,
-#         format,
-#         first_i,
-#         start_i,
-#         end_i,
-#         subsequent_i,
-#         stop_i,
-#         duration_col_position,
-#         label_col_position,
-#         qstamp_col_position
-#         ):
-#     if end_i == subsequent_i == stop_i:
-#         # phrase overlap and n_after == 0: in this case we need to include the subsequent_i because it
-#         # contains the end label of the phrase
-#         stop_i += 1
-#     take_mask = _make_take_mask(first_i, start_i, end_i, subsequent_i, stop_i)
-#     segment = feature_df.iloc[first_i:stop_i]
-#     formatted_phrase = format_phrase_dataframe(
-#         segment,
-#         format=format,
-#         start_i=start_i - first_i,
-#         end_i=None if end_i is None else end_i - first_i,
-#         subsequent_i=subsequent_i - first_i,
-#         qstamp_col_position=qstamp_col_position,
-#         duration_col_position=duration_col_position,
-#         label_col_position=label_col_position,
-#     )
-#     return formatted_phrase
+def make_sequence_non_repeating(
+    S: S,
+) -> tuple:
+    """Returns values in the given sequence without immediate repetitions. Fails if the sequence contains NA."""
+    return tuple(val for val, _ in itertools.groupby(S))
+
+
+def _condense_components(
+    component_df: D,
+    qstamp_col_position: int,
+    duration_col_position: int,
+    localkey_col_position: int,
+    label_col_position: int,
+    chord_col_position: int,
+) -> S:
+    """Returns a series which condenses the phrase components into a row."""
+    first_row = component_df.iloc[0]
+    last_row = component_df.iloc[-1]
+    start_qstamp = first_row.values[qstamp_col_position]
+    end_qstamp = (
+        last_row.values[qstamp_col_position] + last_row.values[duration_col_position]
+    )
+    try:
+        new_duration = float(end_qstamp - start_qstamp)
+    except Exception:
+        print(f"{qstamp_col_position}: {end_qstamp} - {start_qstamp}")
+        raise
+    row_values = first_row.to_dict()
+    row_values["duration_qb"] = new_duration
+    localkeys = make_sequence_non_repeating(
+        component_df.values.T[localkey_col_position]
+    )
+    row_values["n_localkeys"] = len(localkeys)
+    row_values["localkeys"] = localkeys
+    labels = tuple(component_df.values[:, label_col_position])
+    row_values["n_labels"] = len(labels)
+    row_values["labels"] = labels
+    chords = tuple(component_df.values[component_df.chord.notna(), chord_col_position])
+    row_values["n_chords"] = len(chords)
+    row_values["chords"] = chords
+    return pd.Series(row_values, name=first_row.name)
+
+
+def condense_components(raw_phrase_df: D) -> D:
+    groupby_levels = raw_phrase_df.index.names[:-1]
+    qstamp_col_position = raw_phrase_df.columns.get_loc("quarterbeats")
+    duration_col_position = raw_phrase_df.columns.get_loc("duration_qb")
+    localkey_col_position = (raw_phrase_df.columns.get_loc("localkey"),)
+    label_col_position = raw_phrase_df.columns.get_loc("label")
+    chord_col_position = raw_phrase_df.columns.get_loc("chord")
+    return raw_phrase_df.groupby(groupby_levels).apply(
+        _condense_components,
+        qstamp_col_position,
+        duration_col_position,
+        localkey_col_position,
+        label_col_position,
+        chord_col_position,
+    )
 
 
 def _make_concatenated_ranges(
@@ -1258,8 +1175,8 @@ def _make_range_boundaries(
 ) -> npt.NDArray[np.int64]:
     """Turns the individual tuples output by :func:`_get_index_intervals_for_phrases` into four range boundaries.
     The four intervals are [first:start), [start:end], [end:sbsq), [sbsq:stop), which correspond to the components
-    (before, body, codetta, after) of the phrase. The body interval is right-inclusive, which means that the end
-    symbol is included both in the body and, in the beginning of the codetta or after component.
+    (ante, body, codetta, post) of the phrase. The body interval is right-inclusive, which means that the end
+    symbol is included both in the body and, in the beginning of the codetta or post component.
     """
     return np.array([[first, start], [start, end + 1], [end, sbsq], [sbsq, stop]])
 
@@ -1272,7 +1189,7 @@ def make_take_mask_and_index(
 
     * an array of corresponding index positions that can be used as argument for :meth:`pandas.DataFrame.take`
     * an array of equal length that specifies the corresponding phrase IDs (which come from an integer range)
-    * an array of equal length that specifies the corresponding phrase components (before, body, codetta, after)
+    * an array of equal length that specifies the corresponding phrase components (ante, body, codetta, post)
     """
     range_boundaries = []
     for first, start, end, sbsq, last in ix_intervals:
@@ -1292,7 +1209,7 @@ def make_take_mask_and_index(
         take_mask = _make_concatenated_ranges(starts, stops, counts)
     n_repeats = int(counts.shape[0] / 4)
     phrase_ids = np.repeat(np.arange(n_repeats), 4)
-    names = np.tile(np.array(["before", "body", "codetta", "after"]), n_repeats)
+    names = np.tile(np.array(["ante", "body", "codetta", "post"]), n_repeats)
     id_level = phrase_ids.repeat(counts)
     name_level = names.repeat(counts)
     return take_mask, id_level, name_level
@@ -1305,7 +1222,7 @@ def make_raw_phrase_df(
 ):
     """Takes the intervals generated by :meth:`get_index_intervals_for_phrases` and returns a dataframe with two
     additional index levels, one expressing a running count of phrases used as IDs, and one exhibiting for each phrase
-    between one and for of the component names (before, body, codetta, after), where 'body' is guaranteed to be present.
+    between one and for of the component names (ante, body, codetta, post), where 'body' is guaranteed to be present.
     """
     if logger is None:
         logger = module_logger
@@ -1330,6 +1247,17 @@ def make_raw_phrase_df(
         axis=1,
     )
     phrase_df.index = pd.MultiIndex.from_frame(new_index)
+    # here we correct durations for the fact that the end symbol is included both as last symbol of the body and the
+    # first symbol of the codetta or subsequent phrase. At the end of the body, the duration is set to 0.
+    body_end_positions = []
+    for (phrase_id, component), idx in phrase_df.groupby(
+        ["phrase_id", "component"]
+    ).indices.items():
+        if component != "body":
+            continue
+        body_end_positions.append(idx[-1])
+    duration_col_position = phrase_df.columns.get_loc("duration_qb")
+    phrase_df.iloc[body_end_positions, duration_col_position] = 0.0
     return phrase_df
 
 
@@ -1337,13 +1265,17 @@ class PhraseFormat(FriendlyEnum):
     """Format to present the phrases in.
 
     RAW:
-        Phrases come as a dataframe with one row per label that is part of (or adjaent to) a phrase. Phrases and their
-        components (n_before, body, codetta, n_after) are indiciated as index levels. This corresponds to a grouped
+        Phrases come as a dataframe with one row per label that is part of (or adjacent to) a phrase. Phrases and their
+        components (ante, body, codetta, post) are indiciated as index levels. This corresponds to a grouped
         version of the :class:`DcmlAnnotations` feature with duplicate rows and forward-filled chords
-    CONDENSED: Dataframe with one row per phrase, where the columns contain information about the phrase as a whole
+
+    COMPONENT_ROWS:
+    PHRASE_ROWS:
+        Dataframe with one row per phrase, where the columns contain information about the phrase as a whole
     """
 
-    CONDENSED = "CONDENSED"
+    COMPONENT_ROWS = "COMPONENT_ROWS"
+    PHRASE_ROWS = "PHRASE_ROWS"
     RAW = "RAW"
 
 
@@ -1362,13 +1294,14 @@ class PhraseAnnotations(DcmlAnnotations):
     _default_value_column = "duration_qb"
 
     class Schema(DcmlAnnotations.Schema):
-        n_before = mm.fields.Int()
-        n_after = mm.fields.Int()
+        n_ante = mm.fields.Int()
+        n_post = mm.fields.Int()
+        format = FriendlyEnumField(PhraseFormat)
 
     def __init__(
         self,
-        n_before: int = 0,
-        n_after: int = 0,
+        n_ante: int = 0,
+        n_post: int = 0,
         format: PhraseFormat = PhraseFormat.RAW,
         resource: Optional[fl.Resource | str] = None,
         descriptor_filename: Optional[str] = None,
@@ -1380,11 +1313,11 @@ class PhraseAnnotations(DcmlAnnotations):
         """
 
         Args:
-            n_before:
+            n_ante:
                 By default, each phrase includes information about the included labels from beginning to end. Specify a
                 larger integer in order to include additional information on the n labels preceding the phrase. These
                 are generally part of a previous phrase.
-            n_after:
+            n_post:
                 By default, each phrase includes information about the included labels from beginning to end. Specify a
                 larger integer in order to include additional information on the n labels following the phrase. These
                 are generally part of a subsequent phrase.
@@ -1413,8 +1346,8 @@ class PhraseAnnotations(DcmlAnnotations):
             default_groupby=default_groupby,
             playthrough=playthrough,
         )
-        self.n_before = n_before
-        self.n_after = n_after
+        self.n_ante = n_ante
+        self.n_post = n_post
 
     @property
     def format(self) -> PhraseFormat:
@@ -1438,27 +1371,17 @@ class PhraseAnnotations(DcmlAnnotations):
         group_intervals = get_index_intervals_for_phrases(
             harmony_labels=feature_df,
             group_cols=groupby_levels,
-            n_before=self.n_before,
-            n_after=self.n_after,
+            n_ante=self.n_ante,
+            n_post=self.n_post,
             logger=self.logger,
         )
         ix_intervals = sum(group_intervals.values(), [])
         phrase_df = make_raw_phrase_df(feature_df, ix_intervals, self.logger)
-        # qstamp_col_position = feature_df.columns.get_loc("quarterbeats")
-        # duration_col_position = feature_df.columns.get_loc("duration_qb")
-        # label_col_position = feature_df.columns.get_loc("label")
-        # phrases = []
-        # for group, intervals in group_intervals.items():
-        #     for (first_i, start_i, end_i, subsequent_i, stop_i) in intervals:
-        #         formatted_phrase = self._get_formatted_phrase(
-        #             feature_df, first_i, start_i, end_i, subsequent_i, stop_i, duration_col_position,
-        #             label_col_position, qstamp_col_position
-        #             )
-        #         phrases.append(formatted_phrase)
-        #
-        # phrase_df = pd.DataFrame(rows)
-        # phrase_df.index.names = feature_df.index.names
-        return phrase_df
+        if self.format == PhraseFormat.RAW:
+            return phrase_df
+        # first, condense phrase components
+        phrase_components = condense_components(phrase_df)
+        return phrase_components
 
 
 # endregion Annotations
