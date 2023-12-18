@@ -800,11 +800,7 @@ def make_adjacency_mask(
     S: pd.Series,
 ) -> pd.Series:
     """Turns a Series into a Boolean Series that is True for the first value of each group of successive equal
-    values. There are several options of how to deal with NA values.
-
-    Args:
-      S: Series in which to group identical adjacent values with each other.
-
+    values.
     """
     assert not S.isna().any(), "Series must not contain NA values."
     beginnings = (S != S.shift()).fillna(True)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import logging
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
@@ -32,7 +33,6 @@ from dimcat.dc_exceptions import (
     ResourceIsMissingPieceIndexError,
 )
 from dimcat.utils import get_middle_composition_year
-from ms3 import reduce_dataframe_duration_to_first_row
 
 module_logger = logging.getLogger(__name__)
 
@@ -1048,9 +1048,70 @@ def get_index_intervals_for_phrases(
     return group_intervals
 
 
+def make_sequence_non_repeating(S: S) -> tuple:
+    """Returns values in the given sequence without immediate repetitions."""
+    return tuple(val for val, _ in itertools.groupby(S))
+
+
+def reduce_phrase_dataframe_to_row(
+    phrase_df: pd.DataFrame,
+    qstamp_col_position: int,
+    label_col_position: int,
+    logger: logging.Logger,
+    start_symbol: str = "{",
+    end_symbol: str = r"\\",
+    n_before: int = 0,
+    n_after: int = 0,
+) -> pd.Series:
+    """Reduces a DataFrame to a single row, where the original rows correspond to the harmony labels forming part of
+    a single phrase.
+
+    Args:
+      phrase_df: Dataframe of which to keep only the first row. If it has an IntervalIndex, the interval is updated to
+          reflect the whole duration.
+
+    Returns:
+      Series representing one row.
+    """
+    if len(phrase_df) == 1:
+        logger.warning(f"Phrase consists of a single row:\n{phrase_df.iloc[0]}")
+    first_i, last_i = n_before, -(1 + n_after)
+    if n_after:
+        phrase_itself = phrase_df.iloc[first_i : last_i + 1]
+    else:
+        phrase_itself = phrase_df.iloc[first_i:]
+    first_row = phrase_itself.iloc[0]
+    last_row = phrase_df.iloc[-1]
+    start_qstamp = first_row.iloc[qstamp_col_position]
+    end_qstamp = last_row.iloc[qstamp_col_position]
+    try:
+        new_duration = float(end_qstamp - start_qstamp)
+    except Exception:
+        print(f"{qstamp_col_position}: {end_qstamp} - {start_qstamp}")
+        raise
+    row_values = first_row.to_dict()
+    row_values["duration_qb"] = new_duration
+    row_values["first_label"] = first_row.iloc[label_col_position]
+    row_values["last_label"] = last_row.iloc[label_col_position]
+    localkeys = make_sequence_non_repeating(phrase_itself.localkey)
+    row_values["n_localkeys"] = len(localkeys)
+    row_values["localkeys"] = localkeys
+    chords = tuple(phrase_itself.loc[phrase_itself.chord.notna(), "chord"])
+    row_values["n_chords"] = len(chords)
+    row_values["chords"] = chords
+    return pd.Series(row_values, name=first_row.name)
+
+
 class PhraseAnnotations(DcmlAnnotations):
-    _auxiliary_column_names = ["label", "localkey"]
-    _convenience_column_names = KEY_CONVENIENCE_COLUMNS
+    _auxiliary_column_names = ["label", "localkey", "chord"]
+    _convenience_column_names = KEY_CONVENIENCE_COLUMNS + [
+        "first_label",
+        "last_label",
+        "n_localkeys",
+        "localkeys",
+        "n_chords",
+        "chords",
+    ]
     _feature_column_names = ["phraseend"]
     _extractable_features = None
     _default_value_column = "duration_qb"
@@ -1124,19 +1185,27 @@ class PhraseAnnotations(DcmlAnnotations):
             n_after=self.n_after,
             logger=self.logger,
         )
-        dfs = []
+        rows = []
+        qstamp_col_position = feature_df.columns.get_loc("quarterbeats")
+        label_col_position = feature_df.columns.get_loc("label")
         for group, intervals in group_intervals.items():
             for from_i, to_i in intervals:
                 try:
-                    dfs.append(
-                        reduce_dataframe_duration_to_first_row(
-                            feature_df.iloc[from_i:to_i]
-                        )
+                    phrase_df = feature_df.iloc[from_i:to_i]
+                    row = reduce_phrase_dataframe_to_row(
+                        phrase_df,
+                        qstamp_col_position=qstamp_col_position,
+                        label_col_position=label_col_position,
+                        logger=self.logger,
+                        n_before=self.n_before,
+                        n_after=self.n_after,
                     )
+                    rows.append(row)
                 except Exception as e:
                     print(f"group: {group}, interval: ({from_i}, {to_i}) caused {e}")
                     continue
-        phrase_df = pd.concat(dfs)
+        phrase_df = pd.DataFrame(rows)
+        phrase_df.index.names = feature_df.index.names
         return phrase_df  # self._sort_columns(phrase_df)
 
 
