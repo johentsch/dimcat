@@ -1369,6 +1369,14 @@ def make_raw_phrase_df(
     phrase_df.index = pd.MultiIndex.from_frame(new_index)
     # here we correct durations for the fact that the end symbol is included both as last symbol of the body and the
     # first symbol of the codetta or subsequent phrase. At the end of the body, the duration is set to 0.
+    body_end_positions = _get_body_end_positions_from_raw_phrases(phrase_df)
+    duration_col_position = phrase_df.columns.get_loc("duration_qb")
+    phrase_df.iloc[body_end_positions, duration_col_position] = 0.0
+    return phrase_df
+
+
+def _get_body_end_positions_from_raw_phrases(phrase_df: D) -> List[int]:
+    """Returns for each phrase body the index position of the last row."""
     body_end_positions = []
     for (phrase_id, phrase_component), idx in phrase_df.groupby(
         ["phrase_id", "phrase_component"]
@@ -1376,9 +1384,7 @@ def make_raw_phrase_df(
         if phrase_component != "body":
             continue
         body_end_positions.append(idx[-1])
-    duration_col_position = phrase_df.columns.get_loc("duration_qb")
-    phrase_df.iloc[body_end_positions, duration_col_position] = 0.0
-    return phrase_df
+    return body_end_positions
 
 
 class PhraseFormat(FriendlyEnum):
