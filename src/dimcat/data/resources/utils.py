@@ -423,7 +423,7 @@ def get_existing_normpath(fl_resource) -> str:
         ValueError: If the resource has no path or no column_schema.
     """
     if fl_resource.normpath is None:
-        if fl_resource.path is None:
+        if not fl_resource.path:
             raise ValueError(f"Resource {fl_resource.name!r} has no path.")
         normpath = os.path.abspath(fl_resource.path)
     else:

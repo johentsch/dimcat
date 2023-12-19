@@ -578,7 +578,7 @@ Resource.__init__(
             basepath = resource.basepath
         super().__init__(basepath=basepath)
         if is_fl_resource:
-            if resource.path is None:
+            if not hasattr(resource, "path") or resource.path is None:
                 resource.path = ""
             self._resource = resource
         elif resource is None:
@@ -906,7 +906,7 @@ Resource(
         self._update_status()
 
     def _detach_from_filepath(self):
-        self._resource.path = None
+        self._resource.path = ""
         self.logger.debug(
             f"Detached {self.resource_name!r} from filepath by setting the property .filepath to None."
         )
