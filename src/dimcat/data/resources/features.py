@@ -1191,7 +1191,7 @@ def _condense_phrase(
         # if no codetta is defined, the phrase info will simply be copied from the body component
         component_index_iterable = component_indices.items()
     else:
-        phrase_idx = np.concatenate([body_idx, codetta_idx[1:]])
+        phrase_idx = np.concatenate([body_idx[:-1], codetta_idx])
         component_index_iterable = [("phrase", phrase_idx), *component_indices.items()]
     first_body_row = phrase_df.iloc[first_phrase_i]
     row_values = first_body_row.to_dict()
