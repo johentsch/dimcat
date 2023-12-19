@@ -192,7 +192,7 @@ class DcmlAnnotations(Annotations):
     _default_value_column = "label"
     _extractable_features = HARMONY_FEATURE_NAMES + (
         FeatureName.CadenceLabels,
-        FeatureName.PhraseAnnotations,
+        FeatureName.PhraseLabels,
     )
 
     def _format_dataframe(self, feature_df: D) -> D:
@@ -1010,12 +1010,12 @@ def _get_index_intervals_for_phrases(
             n_ends = len(included_ends)
             if not n_ends:
                 logger.warning(
-                    f"Phrase has no end symbol in [{fro}:{to}]:\n{markers.iloc[fro:to+1]}"
+                    f"Phrase has no end symbol in [{fro}:{to}]:\n{markers.loc[fro:to+1]}"
                 )
                 return (fro, None, to)
             elif n_ends > 2:
                 logger.warning(
-                    f"Phrase has multiple end symbols:\n{markers.iloc[fro:to+1]}"
+                    f"Phrase has multiple end symbols:\n{markers.loc[fro:to+1]}"
                 )
                 return (fro, None, to)
             end_ix = included_ends[0]
@@ -1387,24 +1387,6 @@ def _get_body_end_positions_from_raw_phrases(phrase_df: D) -> List[int]:
     return body_end_positions
 
 
-class PhraseFormat(FriendlyEnum):
-    """Format to present the phrases in.
-
-    RAW:
-        Phrases come as a dataframe with one row per label that is part of (or adjacent to) a phrase. Phrases and their
-        components (ante, body, codetta, post) are indiciated as index levels. This corresponds to a grouped
-        version of the :class:`DcmlAnnotations` feature with duplicate rows and forward-filled chords
-
-    COMPONENT_ROWS:
-    PHRASE_ROWS:
-        Dataframe with one row per phrase, where the columns contain information about the phrase as a whole
-    """
-
-    COMPONENT_ROWS = "COMPONENT_ROWS"
-    PHRASE_ROWS = "PHRASE_ROWS"
-    RAW = "RAW"
-
-
 class PhraseAnnotations(DcmlAnnotations):
     _auxiliary_column_names = ["label", "localkey", "chord"]
     _convenience_column_names = KEY_CONVENIENCE_COLUMNS + [
@@ -1416,19 +1398,18 @@ class PhraseAnnotations(DcmlAnnotations):
         "chords",
     ]
     _feature_column_names = ["phraseend"]
-    _extractable_features = None
+    _extractable_features = [FeatureName.PhraseComponents, FeatureName.PhraseLabels]
     _default_value_column = "duration_qb"
 
     class Schema(DcmlAnnotations.Schema):
         n_ante = mm.fields.Int()
         n_post = mm.fields.Int()
-        format = FriendlyEnumField(PhraseFormat)
 
     def __init__(
         self,
         n_ante: int = 0,
         n_post: int = 0,
-        format: PhraseFormat = PhraseFormat.RAW,
+        format=None,
         resource: Optional[fl.Resource | str] = None,
         descriptor_filename: Optional[str] = None,
         basepath: Optional[str] = None,
@@ -1447,7 +1428,7 @@ class PhraseAnnotations(DcmlAnnotations):
                 By default, each phrase includes information about the included labels from beginning to end. Specify a
                 larger integer in order to include additional information on the n labels following the phrase. These
                 are generally part of a subsequent phrase.
-            format:
+            format: Not in use.
             resource: An existing :obj:`frictionless.Resource`.
             descriptor_filename:
                 Relative filepath for using a different JSON/YAML descriptor filename than the default
@@ -1475,22 +1456,13 @@ class PhraseAnnotations(DcmlAnnotations):
         self.n_ante = n_ante
         self.n_post = n_post
 
-    @property
-    def format(self) -> PhraseFormat:
-        return self._format
-
-    @format.setter
-    def format(self, format: PhraseFormat):
-        try:
-            format = PhraseFormat(format)
-        except ValueError:
-            raise ValueError(f"Unknown format {format!r}.")
-        self._format = format
-
     def _format_dataframe(self, feature_df: D) -> D:
         """Called by :meth:`_prepare_feature_df` to transform the resource dataframe into a feature dataframe.
         Assumes that the dataframe can be mutated safely, i.e. that it is a copy.
         """
+        level_names = feature_df.index.names
+        if "phrase_id" in level_names and "phrase_component" in level_names:
+            return feature_df
         feature_df = self._apply_playthrough(feature_df)
         feature_df = extend_keys_feature(feature_df)
         groupby_levels = feature_df.index.names[:-1]
@@ -1502,14 +1474,23 @@ class PhraseAnnotations(DcmlAnnotations):
             logger=self.logger,
         )
         ix_intervals = sum(group_intervals.values(), [])
-        phrase_df = make_raw_phrase_df(feature_df, ix_intervals, self.logger)
-        if self.format == PhraseFormat.RAW:
-            return phrase_df
-        if self.format == PhraseFormat.COMPONENT_ROWS:
-            return condense_components(phrase_df)
-        if self.format == PhraseFormat.PHRASE_ROWS:
-            return condense_phrases(phrase_df)
-        raise NotImplementedError(f"Unknown format {self.format!r}.")
+        return make_raw_phrase_df(feature_df, ix_intervals, self.logger)
+
+
+class PhraseComponents(PhraseAnnotations):
+    _extractable_features = None
+
+    def _format_dataframe(self, feature_df: D) -> D:
+        phrase_df = super()._format_dataframe(feature_df)
+        return condense_components(phrase_df)
+
+
+class PhraseLabels(PhraseAnnotations):
+    _extractable_features = None
+
+    def _format_dataframe(self, feature_df: D) -> D:
+        phrase_df = super()._format_dataframe(feature_df)
+        return condense_phrases(phrase_df)
 
 
 # endregion Annotations

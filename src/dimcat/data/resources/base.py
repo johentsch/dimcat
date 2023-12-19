@@ -1398,6 +1398,8 @@ class FeatureName(ObjectEnum):
     HarmonyLabels = "HarmonyLabels"
     KeyAnnotations = "KeyAnnotations"
     PhraseAnnotations = "PhraseAnnotations"
+    PhraseComponents = "PhraseComponents"
+    PhraseLabels = "PhraseLabels"
     Measures = "Measures"
     Metadata = "Metadata"
     Notes = "Notes"

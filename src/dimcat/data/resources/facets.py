@@ -126,6 +126,8 @@ class MuseScoreHarmonies(MuseScoreFacet, AnnotationsFacet):
         FeatureName.DcmlAnnotations,
         FeatureName.CadenceLabels,
         FeatureName.PhraseAnnotations,
+        FeatureName.PhraseComponents,
+        FeatureName.PhraseLabels,
     ) + HARMONY_FEATURE_NAMES
 
     def _prepare_feature_df(self, feature_config: DimcatConfig) -> D:
