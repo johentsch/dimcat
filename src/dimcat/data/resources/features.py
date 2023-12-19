@@ -1094,10 +1094,10 @@ def _condense_components(
 ) -> S:
     """Returns a series which condenses the phrase components into a row."""
     first_row = component_df.iloc[0]
-    last_row = component_df.iloc[-1]
-    start_qstamp = first_row.values[qstamp_col_position]
+    start_qstamp = component_df.iat[0, qstamp_col_position]
     end_qstamp = (
-        last_row.values[qstamp_col_position] + last_row.values[duration_col_position]
+        component_df.iat[-1, qstamp_col_position]
+        + component_df.iat[-1, duration_col_position]
     )
     try:
         new_duration = float(end_qstamp - start_qstamp)
@@ -1106,15 +1106,15 @@ def _condense_components(
         raise
     row_values = first_row.to_dict()
     row_values["duration_qb"] = new_duration
-    localkeys = make_sequence_non_repeating(
-        component_df.values.T[localkey_col_position]
-    )
-    row_values["n_localkeys"] = len(localkeys)
+    columns = component_df.iloc(axis=1)
+    localkeys = tuple(columns[localkey_col_position])
+    modulations = make_sequence_non_repeating(localkeys)
     row_values["localkeys"] = localkeys
-    labels = tuple(component_df.values[:, label_col_position])
+    row_values["n_modulations"] = len(modulations) - 1
+    labels = tuple(columns[label_col_position])
     row_values["n_labels"] = len(labels)
     row_values["labels"] = labels
-    chords = tuple(component_df.values[component_df.chord.notna(), chord_col_position])
+    chords = tuple(columns[chord_col_position])
     row_values["n_chords"] = len(chords)
     row_values["chords"] = chords
     return pd.Series(row_values, name=first_row.name)
@@ -1124,7 +1124,7 @@ def condense_components(raw_phrase_df: D) -> D:
     groupby_levels = raw_phrase_df.index.names[:-1]
     qstamp_col_position = raw_phrase_df.columns.get_loc("quarterbeats")
     duration_col_position = raw_phrase_df.columns.get_loc("duration_qb")
-    localkey_col_position = (raw_phrase_df.columns.get_loc("localkey"),)
+    localkey_col_position = raw_phrase_df.columns.get_loc("localkey")
     label_col_position = raw_phrase_df.columns.get_loc("label")
     chord_col_position = raw_phrase_df.columns.get_loc("chord")
     return raw_phrase_df.groupby(groupby_levels).apply(
