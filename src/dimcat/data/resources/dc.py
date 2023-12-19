@@ -863,6 +863,8 @@ DimcatResource.__init__(
         Constructor = get_class(feature_name)
         if new_name is None:
             new_name = f"{self.resource_name}.{feature_name.lower()}"
+            if fmt := feature_config.get("format"):
+                new_name += f"-{fmt.lower()}"
         feature_df = self._prepare_feature_df(feature_config)
         len_before = len(feature_df)
         feature_df = self._transform_feature_df(feature_df, feature_config)

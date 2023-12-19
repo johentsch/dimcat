@@ -759,10 +759,6 @@ class BassNotes(HarmonyLabels):
             return self._default_formatted_column
         return
 
-    def _modify_name(self):
-        """Modify the :attr:`resource_name` to reflect the feature."""
-        self.resource_name = f"{self.resource_name}.bass_notes"
-
     def _format_dataframe(self, feature_df: D) -> D:
         """Called by :meth:`_prepare_feature_df` to transform the resource dataframe into a feature dataframe.
         Assumes that the dataframe can be mutated safely, i.e. that it is a copy.
