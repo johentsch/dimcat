@@ -50,4 +50,4 @@ def get_piece_groups(dataset):
 
 if __name__ == "__main__":
     D = load_distant_listening_corpus()
-    phrases = D.get_feature(dict(dtype="PhraseAnnotations", format="COMPONENT"))
+    phrases = D.get_feature(dict(dtype="PhraseAnnotations", format="PHRASE"))
