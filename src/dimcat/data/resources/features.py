@@ -1078,13 +1078,13 @@ def get_index_intervals_for_phrases(
 
 
 def make_sequence_non_repeating(
-    S: S,
+    sequence: S,
 ) -> tuple:
     """Returns values in the given sequence without immediate repetitions. Fails if the sequence contains NA."""
-    return tuple(val for val, _ in itertools.groupby(S))
+    return tuple(val for val, _ in itertools.groupby(sequence))
 
 
-def _condense_components(
+def _condense_component(
     component_df: D,
     qstamp_col_position: int,
     duration_col_position: int,
@@ -1104,32 +1104,55 @@ def _condense_components(
     except Exception:
         print(f"{qstamp_col_position}: {end_qstamp} - {start_qstamp}")
         raise
+    component_info = _compile_component_info(
+        component_df,
+        localkey_col_position,
+        label_col_position,
+        chord_col_position,
+    )
+    component_info["duration_qb"] = new_duration
     row_values = first_row.to_dict()
-    row_values["duration_qb"] = new_duration
-    columns = component_df.iloc(axis=1)
-    localkeys = tuple(columns[localkey_col_position])
-    modulations = make_sequence_non_repeating(localkeys)
-    row_values["localkeys"] = localkeys
-    row_values["n_modulations"] = len(modulations) - 1
-    row_values["modulatory_sequence"] = modulations
-    labels = tuple(columns[label_col_position])
-    row_values["n_labels"] = len(labels)
-    row_values["labels"] = labels
-    chords = tuple(columns[chord_col_position])
-    row_values["n_chords"] = len(chords)
-    row_values["chords"] = chords
+    row_values.update(component_info)
     return pd.Series(row_values, name=first_row.name)
 
 
+def _compile_component_info(
+    component_df: D,
+    localkey_col_position,
+    label_col_position,
+    chord_col_position,
+    key_prefix="",
+):
+    columns = component_df.iloc(axis=1)
+    localkeys = tuple(columns[localkey_col_position])
+    modulations = make_sequence_non_repeating(localkeys)
+    labels = tuple(columns[label_col_position])
+    chords = tuple(columns[chord_col_position])
+    component_info = dict(
+        localkeys=localkeys,
+        n_modulations=len(modulations) - 1,
+        modulatory_sequence=modulations,
+        n_labels=len(labels),
+        labels=labels,
+        n_chords=len(chords),
+        chords=chords,
+    )
+    if key_prefix:
+        component_info = {
+            f"{key_prefix}{key}": val for key, val in component_info.items()
+        }
+    return component_info
+
+
 def condense_components(raw_phrase_df: D) -> D:
-    groupby_levels = raw_phrase_df.index.names[:-1]
     qstamp_col_position = raw_phrase_df.columns.get_loc("quarterbeats")
     duration_col_position = raw_phrase_df.columns.get_loc("duration_qb")
     localkey_col_position = raw_phrase_df.columns.get_loc("localkey")
     label_col_position = raw_phrase_df.columns.get_loc("label")
     chord_col_position = raw_phrase_df.columns.get_loc("chord")
+    groupby_levels = raw_phrase_df.index.names[:-1]
     return raw_phrase_df.groupby(groupby_levels).apply(
-        _condense_components,
+        _condense_component,
         qstamp_col_position,
         duration_col_position,
         localkey_col_position,
@@ -1138,7 +1161,7 @@ def condense_components(raw_phrase_df: D) -> D:
     )
 
 
-def _condense_phrases(
+def _condense_phrase(
     phrase_df: D,
     qstamp_col_position: int,
     duration_col_position: int,
@@ -1163,30 +1186,27 @@ def _condense_phrases(
     except Exception:
         print(f"{qstamp_col_position}: {end_qstamp} - {start_qstamp}")
         raise
-    row_values = first_body_row.to_dict()
-    row_values["duration_qb"] = new_duration
     phrase_idx = body_idx
     if codetta_idx is not None:
         phrase_idx = np.concatenate([phrase_idx, codetta_idx[1:]])
-    phrase_components = [("phrase", phrase_idx), *component_indices.items()]
-    for group, df in ((group, phrase_df.take(idx)) for group, idx in phrase_components):
-        columns = df.iloc(axis=1)
-        localkeys = tuple(columns[localkey_col_position])
-        modulations = make_sequence_non_repeating(localkeys)
-        row_values[f"{group}_localkeys"] = localkeys
-        row_values[f"{group}_n_modulations"] = len(modulations) - 1
-        row_values[f"{group}_modulatory_sequence"] = modulations
-        labels = tuple(columns[label_col_position])
-        row_values[f"{group}_n_labels"] = len(labels)
-        row_values[f"{group}_labels"] = labels
-        chords = tuple(columns[chord_col_position])
-        row_values[f"{group}_n_chords"] = len(chords)
-        row_values[f"{group}_chords"] = chords
+    components_including_phrase = [("phrase", phrase_idx), *component_indices.items()]
+    row_values = first_body_row.to_dict()
+    row_values["duration_qb"] = new_duration
+    for group, component_df in (
+        (group, phrase_df.take(idx)) for group, idx in components_including_phrase
+    ):
+        component_info = _compile_component_info(
+            component_df,
+            localkey_col_position,
+            label_col_position,
+            chord_col_position,
+            key_prefix=f"{group}_",
+        )
+        row_values.update(component_info)
     return row_values
 
 
 def condense_phrases(raw_phrase_df: D) -> D:
-    groupby_levels = raw_phrase_df.index.names[:-2]
     qstamp_col_position = raw_phrase_df.columns.get_loc("quarterbeats")
     duration_col_position = raw_phrase_df.columns.get_loc("duration_qb")
     localkey_col_position = raw_phrase_df.columns.get_loc("localkey")
@@ -1195,8 +1215,9 @@ def condense_phrases(raw_phrase_df: D) -> D:
     # we're not using :meth:`pandas.DataFrameGroupBy.apply` because the series returned by _condense_phrases may have
     # varying lengths, which would result in a series, not a dataframe. Instead, we're collecting groupwise row dicts
     # and then creating a dataframe from them.
+    groupby_levels = raw_phrase_df.index.names[:-2]
     group2dict = {
-        group: _condense_phrases(
+        group: _condense_phrase(
             phrase_df,
             qstamp_col_position,
             duration_col_position,
@@ -1208,13 +1229,15 @@ def condense_phrases(raw_phrase_df: D) -> D:
     }
     result = pd.DataFrame.from_dict(group2dict, orient="index")
     result.index.names = groupby_levels
-    int_cols = {
-        comp + col: "Int64"
+    nullable_int_cols = {
+        col_name: "Int64"
         for comp, col in itertools.product(
-            ("phrase_", "body_", "codetta_"), ("n_modulations", "n_labels", "n_chords")
+            ("phrase_", "ante_", "body_", "codetta_", "post_"),
+            ("n_modulations", "n_labels", "n_chords"),
         )
+        if (col_name := comp + col) in result.columns
     }
-    result = result.astype(int_cols)
+    result = result.astype(nullable_int_cols)
     return result
 
 
