@@ -1094,23 +1094,14 @@ def _condense_component(
 ) -> S:
     """Returns a series which condenses the phrase components into a row."""
     first_row = component_df.iloc[0]
-    start_qstamp = component_df.iat[0, qstamp_col_position]
-    end_qstamp = (
-        component_df.iat[-1, qstamp_col_position]
-        + component_df.iat[-1, duration_col_position]
-    )
-    try:
-        new_duration = float(end_qstamp - start_qstamp)
-    except Exception:
-        print(f"{qstamp_col_position}: {end_qstamp} - {start_qstamp}")
-        raise
     component_info = _compile_component_info(
         component_df,
+        qstamp_col_position,
+        duration_col_position,
         localkey_col_position,
         label_col_position,
         chord_col_position,
     )
-    component_info["duration_qb"] = new_duration
     row_values = first_row.to_dict()
     row_values.update(component_info)
     return pd.Series(row_values, name=first_row.name)
@@ -1118,11 +1109,19 @@ def _condense_component(
 
 def _compile_component_info(
     component_df: D,
+    qstamp_col_position,
+    duration_col_position,
     localkey_col_position,
     label_col_position,
     chord_col_position,
-    key_prefix="",
+    key_prefix: Optional[str] = "",
 ):
+    start_qstamp = component_df.iat[0, qstamp_col_position]
+    end_qstamp = (
+        component_df.iat[-1, qstamp_col_position]
+        + component_df.iat[-1, duration_col_position]
+    )
+    new_duration = float(end_qstamp - start_qstamp)
     columns = component_df.iloc(axis=1)
     localkeys = tuple(columns[localkey_col_position])
     modulations = make_sequence_non_repeating(localkeys)
@@ -1137,10 +1136,15 @@ def _compile_component_info(
         n_chords=len(chords),
         chords=chords,
     )
+    duration_key = "duration_qb"
     if key_prefix:
         component_info = {
             f"{key_prefix}{key}": val for key, val in component_info.items()
         }
+        if key_prefix != "phrase_":
+            # phrase duration is used as the main 'duration_qb' column
+            duration_key = f"{key_prefix}duration_qb"
+    component_info[duration_key] = new_duration
     return component_info
 
 
@@ -1173,36 +1177,51 @@ def _condense_phrase(
     component_indices = phrase_df.groupby("phrase_component").indices
     body_idx = component_indices.get("body")
     codetta_idx = component_indices.get("codetta")
-    first_body_i = body_idx[0]
-    first_body_row = phrase_df.iloc[first_body_i]
-    last_phrase_i = body_idx[-1] if codetta_idx is None else codetta_idx[-1]
-    start_qstamp = phrase_df.iat[first_body_i, qstamp_col_position]
-    end_qstamp = (
-        phrase_df.iat[last_phrase_i, qstamp_col_position]
-        + phrase_df.iat[last_phrase_i, duration_col_position]
-    )
-    try:
-        new_duration = float(end_qstamp - start_qstamp)
-    except Exception:
-        print(f"{qstamp_col_position}: {end_qstamp} - {start_qstamp}")
-        raise
-    phrase_idx = body_idx
-    if codetta_idx is not None:
-        phrase_idx = np.concatenate([phrase_idx, codetta_idx[1:]])
-    components_including_phrase = [("phrase", phrase_idx), *component_indices.items()]
+    first_phrase_i = body_idx[0]
+    last_body_i = body_idx[-1]
+    end_label = phrase_df.iat[last_body_i, label_col_position]
+    end_chord = phrase_df.iat[last_body_i, chord_col_position]
+    if "}" in end_label:
+        interlocked_ante = "}" in phrase_df.iat[first_phrase_i, label_col_position]
+        interlocked_post = codetta_idx is None
+    else:
+        # old-style phrase endings didn't provide the means to encode phrase interlocking
+        interlocked_ante, interlocked_post = pd.NA, pd.NA
+    if codetta_idx is None:
+        # if no codetta is defined, the phrase info will simply be copied from the body component
+        component_index_iterable = component_indices.items()
+    else:
+        phrase_idx = np.concatenate([body_idx, codetta_idx[1:]])
+        component_index_iterable = [("phrase", phrase_idx), *component_indices.items()]
+    first_body_row = phrase_df.iloc[first_phrase_i]
     row_values = first_body_row.to_dict()
-    row_values["duration_qb"] = new_duration
     for group, component_df in (
-        (group, phrase_df.take(idx)) for group, idx in components_including_phrase
+        (group, phrase_df.take(idx)) for group, idx in component_index_iterable
     ):
         component_info = _compile_component_info(
             component_df,
+            qstamp_col_position,
+            duration_col_position,
             localkey_col_position,
             label_col_position,
             chord_col_position,
             key_prefix=f"{group}_",
         )
         row_values.update(component_info)
+    if codetta_idx is None:
+        phrase_info = {}
+        for key, value in component_info.items():
+            if key.startswith("body_"):
+                if key == "body_duration_qb":
+                    phrase_key = "duration_qb"
+                else:
+                    phrase_key = key.replace("body_", "phrase_")
+                phrase_info[phrase_key] = value
+        row_values.update(phrase_info)
+    row_values["interlocked_ante"] = interlocked_ante
+    row_values["interlocked_post"] = interlocked_post
+    row_values["end_label"] = end_label
+    row_values["end_chord"] = end_chord
     return row_values
 
 
