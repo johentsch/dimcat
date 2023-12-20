@@ -530,6 +530,7 @@ class DimcatResource(Resource, Generic[D]):
         basepath: Optional[str] = None,
         auto_validate: bool = False,
         default_groupby: Optional[str | list[str]] = None,
+        format=None,
     ) -> None:
         """
 
@@ -546,6 +547,7 @@ class DimcatResource(Resource, Generic[D]):
                 e.g. replacing the :attr:`column_schema`.
             default_groupby:
                 Pass a list of column names or index levels to groupby something else than the default (by piece).
+            format: Defines the :attr:`format`.
         """
         self.logger.debug(
             f"""
@@ -560,6 +562,7 @@ DimcatResource.__init__(
         self._df: D = None
         self.auto_validate = True if auto_validate else False  # catches None
         self._default_groupby: List[str] = []
+        self._format = None
         self._value_column: Optional[str] = None
         self._formatted_column: Optional[str] = None
         super().__init__(
@@ -569,6 +572,9 @@ DimcatResource.__init__(
         )
         if default_groupby is not None:
             self.default_groupby = default_groupby
+
+        if format is not None:
+            self.format = format
 
         if self.auto_validate and self.status == ResourceStatus.DATAFRAME:
             _ = self.validate(raise_exception=True)
@@ -660,7 +666,8 @@ DimcatResource.__init__(
         self._default_groupby = default_groupby
 
     @property
-    def df(self) -> D:
+    def dataframe(self) -> D:
+        """Returns the dataframe underlying this resource, without applying any formatting."""
         if self._df is not None:
             resource_df = self._df
         elif self.is_serialized:
@@ -670,9 +677,21 @@ DimcatResource.__init__(
             RuntimeError(f"No dataframe accessible for this {self.name}:\n{self}")
         return resource_df
 
+    @dataframe.setter
+    def dataframe(self, df: D) -> None:
+        self.set_dataframe(df)
+
+    @property
+    def df(self) -> D:
+        """Returns the dataframe underlying this resource, applying the current format, if set."""
+        resource_df = self.dataframe
+        if self.format:
+            return self.format_dataframe(resource_df)
+        return resource_df
+
     @df.setter
     def df(self, df: D) -> None:
-        self.set_dataframe(df)
+        self.dataframe = df
 
     @property
     def extractable_features(self) -> Tuple[FeatureName, ...]:
@@ -684,6 +703,19 @@ DimcatResource.__init__(
     def field_names(self) -> List[str]:
         """The names of the fields in the resource's schema."""
         return self.column_schema.field_names
+
+    @property
+    def format(self) -> None:
+        return self._format
+
+    @format.setter
+    def format(self, value):
+        if value is not None:
+            warnings.warn(
+                f"{self.name} doesn't have its own setter, so the format value is not checked for validity.",
+                UserWarning,
+            )
+        self._format = value
 
     @property
     def formatted_column(self) -> Optional[str]:
@@ -930,6 +962,24 @@ DimcatResource.__init__(
         if do_level_drop and level in new_resource.default_groupby:
             new_resource._default_groupby.remove(level)
         return new_resource
+
+    def _format_dataframe(
+        self,
+        df: D,
+        format,
+    ):
+        return df
+
+    def format_dataframe(self, df: Optional[D] = None, format=None):
+        """Format the resource dataframe or the one specified by the current format or the one specified. This method
+        is called by the :attr:`df` property, but not by the :attr:`dataframe` property.
+        """
+        if df is None:
+            df = self.dataframe
+        if format is None:
+            format = self.format
+        self.logger.debug(f"Formatting dataframe using {format}.")
+        return self._format_dataframe(df, format)
 
     def _get_current_status(self) -> ResourceStatus:
         if self.is_packaged:
@@ -1929,18 +1979,17 @@ class Feature(DimcatResource):
 
     def __init__(
         self,
-        format=None,
         resource: Optional[fl.Resource | str] = None,
         descriptor_filename: Optional[str] = None,
         basepath: Optional[str] = None,
         auto_validate: bool = True,
         default_groupby: Optional[str | list[str]] = None,
+        format=None,
         playthrough: Playthrough = Playthrough.SINGLE,
     ) -> None:
         """
 
         Args:
-            format: Defines the :attr:`format`.
             resource: Resource to create this feature from.
             descriptor_filename: Name of the resource descriptor (JSON) file.
             basepath: Where to store serialization data and its descriptor by default.
@@ -1949,6 +1998,7 @@ class Feature(DimcatResource):
                 writing to disk). Set True to raise an exception during creation or modification of the resource,
                 e.g. replacing the :attr:`column_schema`.
             default_groupby: Name of the fields for grouping this resource (usually after a Grouper has been applied).
+            format: Defines the :attr:`format`.
             playthrough:
                 Defaults to ``Playthrough.SINGLE``, meaning that first-ending (prima volta) bars are dropped in order
                 to exclude incorrect transitions and adjacencies between the first- and second-ending bars.
@@ -1959,28 +2009,14 @@ class Feature(DimcatResource):
             basepath=basepath,
             auto_validate=auto_validate,
             default_groupby=default_groupby,
+            format=format,
         )
-        self._format = None
-        if format is not None:
-            self.format = format
         self._playthrough = None
         try:
             playthrough = Playthrough(playthrough)
         except ValueError:
             raise ValueError(f"Expected Playthrough, got {playthrough!r}.")
         self._playthrough = playthrough
-
-    @property
-    def format(self) -> None:
-        return self._format
-
-    @format.setter
-    def format(self, value):
-        if value is not None:
-            warnings.warn(
-                f"Setting format for {self.name} is inconsequential because no setter has been defined.",
-                RuntimeWarning,
-            )
 
     @property
     def playthrough(self) -> Playthrough:

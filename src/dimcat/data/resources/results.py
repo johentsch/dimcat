@@ -25,7 +25,8 @@ import marshmallow as mm
 import ms3
 import numpy as np
 import pandas as pd
-from dimcat.base import LowercaseEnum, ObjectEnum, get_setting
+from dimcat.base import FriendlyEnum, LowercaseEnum, ObjectEnum, get_setting
+from dimcat.dc_exceptions import UnknownFormat
 from dimcat.plotting import (
     CADENCE_COLORS,
     GroupMode,
@@ -255,6 +256,7 @@ class Result(DimcatResource):
         basepath: Optional[str] = None,
         auto_validate: bool = False,
         default_groupby: Optional[str | list[str]] = None,
+        format=None,
         **kwargs,
     ) -> None:
         """
@@ -269,6 +271,7 @@ class Result(DimcatResource):
             basepath:
             auto_validate:
             default_groupby:
+            format:
             **kwargs:
                 Since Results are often initialized from a Feature resource, this catches any init arguments for the
                 feature and puts them in a debug log message.
@@ -284,6 +287,7 @@ class Result(DimcatResource):
             basepath=basepath,
             auto_validate=auto_validate,
             default_groupby=default_groupby,
+            format=format,
         )
         # self._formatted_column and self._value_column are already set by super().__init__()
         self.analyzed_resource: DimcatResource = analyzed_resource
@@ -2135,9 +2139,50 @@ class NgramTuples(Result):
         raise NotImplementedError
 
 
+class PhraseDataFormat(FriendlyEnum):
+    LONG = "LONG"
+    WIDE = "WIDE"
+
+
 class PhraseData(Result):
     class Schema(Result.Schema):
         pass
+
+    def __init__(
+        self,
+        analyzed_resource: DimcatResource,
+        value_column: Optional[str],
+        dimension_column: Optional[str],
+        formatted_column: Optional[str] = None,
+        resource: fl.Resource = None,
+        descriptor_filename: Optional[str] = None,
+        basepath: Optional[str] = None,
+        auto_validate: bool = False,
+        default_groupby: Optional[str | list[str]] = None,
+        format: PhraseDataFormat = PhraseDataFormat.LONG,
+        **kwargs,
+    ):
+        super().__init__(
+            analyzed_resource=analyzed_resource,
+            value_column=value_column,
+            dimension_column=dimension_column,
+            formatted_column=formatted_column,
+            resource=resource,
+            descriptor_filename=descriptor_filename,
+            basepath=basepath,
+            auto_validate=auto_validate,
+            default_groupby=default_groupby,
+            format=format,
+            **kwargs,
+        )
+
+    @property
+    def format(self) -> PhraseDataFormat:
+        return self._format
+
+    @format.setter
+    def format(self, format: PhraseDataFormat):
+        self._format = PhraseDataFormat(format)
 
     def _combine_results(
         self,
@@ -2151,6 +2196,21 @@ class PhraseData(Result):
         applied, the entire dataset is treated as a single group.
         """
         raise NotImplementedError
+
+    def _format_dataframe(
+        self,
+        df: D,
+        format: PhraseDataFormat,
+    ):
+        if format == PhraseDataFormat.LONG:
+            return df
+        if format == PhraseDataFormat.WIDE:
+            formatted = df.unstack()
+            if formatted.columns.nlevels == 2:
+                formatted.columns.rename("column", level=0, inplace=True)
+                formatted = formatted.stack("column")
+            return formatted.sort_index(axis=1)
+        raise UnknownFormat(format, PhraseDataFormat, self.name, self.resource_name)
 
     def make_bar_plot(
         self,
@@ -2340,6 +2400,7 @@ class Transitions(Result):
         basepath: Optional[str] = None,
         auto_validate: bool = False,
         default_groupby: Optional[str | list[str]] = None,
+        format=None,
     ) -> None:
         super().__init__(
             analyzed_resource=analyzed_resource,
@@ -2351,6 +2412,7 @@ class Transitions(Result):
             basepath=basepath,
             auto_validate=auto_validate,
             default_groupby=default_groupby,
+            format=format,
         )
         self._feature_columns = feature_columns
 

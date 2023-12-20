@@ -32,7 +32,7 @@ from dimcat.data.resources.dc import (
     SliceIntervals,
     UnitOfAnalysis,
 )
-from dimcat.data.resources.results import PhraseData, tuple2str
+from dimcat.data.resources.results import PhraseData, PhraseDataFormat, tuple2str
 from dimcat.data.resources.utils import (
     boolean_is_minor_column_to_mode,
     condense_dataframe_by_groups,
@@ -490,21 +490,17 @@ class HarmonyLabels(DcmlAnnotations):
 
     def __init__(
         self,
-        format: HarmonyLabelsFormat = HarmonyLabelsFormat.ROMAN,
         resource: fl.Resource = None,
         descriptor_filename: Optional[str] = None,
         basepath: Optional[str] = None,
         auto_validate: bool = False,
         default_groupby: Optional[str | list[str]] = None,
+        format: HarmonyLabelsFormat = HarmonyLabelsFormat.ROMAN,
         playthrough: Playthrough = Playthrough.SINGLE,
     ) -> None:
         """
 
         Args:
-            format:
-                Format to display the chord labels in. ROMAN stands for Roman numerals,
-                ROMAN_REDUCED for the same numerals without any suspensions, alterations, additions,
-                etc.
             resource: An existing :obj:`frictionless.Resource`.
             descriptor_filename:
                 Relative filepath for using a different JSON/YAML descriptor filename than the default
@@ -516,6 +512,10 @@ class HarmonyLabels(DcmlAnnotations):
                 writing to disk). Set True to raise an exception during creation or modification of the resource,
                 e.g. replacing the :attr:`column_schema`.
             default_groupby: Name of the fields for grouping this resource (usually after a Grouper has been applied).
+            format:
+                Format to display the chord labels in. ROMAN stands for Roman numerals,
+                ROMAN_REDUCED for the same numerals without any suspensions, alterations, additions,
+                etc.
             playthrough:
                 Defaults to ``Playthrough.SINGLE``, meaning that first-ending (prima volta) bars are dropped in order
                 to exclude incorrect transitions and adjacencies between the first- and second-ending bars.
@@ -716,20 +716,20 @@ class BassNotes(HarmonyLabels):
 
     def __init__(
         self,
-        format: NotesFormat = BassNotesFormat.INTERVAL,
         resource: Optional[fl.Resource | str] = None,
         descriptor_filename: Optional[str] = None,
         basepath: Optional[str] = None,
         auto_validate: bool = True,
         default_groupby: Optional[str | list[str]] = None,
+        format: NotesFormat = BassNotesFormat.INTERVAL,
     ) -> None:
         super().__init__(
-            format=format,
             resource=resource,
             descriptor_filename=descriptor_filename,
             basepath=basepath,
             auto_validate=auto_validate,
             default_groupby=default_groupby,
+            format=format,
         )
 
     @property
@@ -848,21 +848,17 @@ class CadenceLabels(DcmlAnnotations):
 
     def __init__(
         self,
-        format: NotesFormat = CadenceLabelFormat.RAW,
         resource: Optional[fl.Resource | str] = None,
         descriptor_filename: Optional[str] = None,
         basepath: Optional[str] = None,
         auto_validate: bool = True,
         default_groupby: Optional[str | list[str]] = None,
+        format: NotesFormat = CadenceLabelFormat.RAW,
         playthrough: Playthrough = Playthrough.SINGLE,
     ) -> None:
         """
 
         Args:
-            format:
-                Format to display the cadence labels in. RAW stands for 'as-is'. TYPE omits the
-                subtype, reducing more specific labels, whereas SUBTYPE displays subtypes only,
-                omitting all labels that do not specify one.
             resource: An existing :obj:`frictionless.Resource`.
             descriptor_filename:
                 Relative filepath for using a different JSON/YAML descriptor filename than the default
@@ -874,6 +870,10 @@ class CadenceLabels(DcmlAnnotations):
                 writing to disk). Set True to raise an exception during creation or modification of the resource,
                 e.g. replacing the :attr:`column_schema`.
             default_groupby: Name of the fields for grouping this resource (usually after a Grouper has been applied).
+            format:
+                Format to display the cadence labels in. RAW stands for 'as-is'. TYPE omits the
+                subtype, reducing more specific labels, whereas SUBTYPE displays subtypes only,
+                omitting all labels that do not specify one.
             playthrough:
                 Defaults to ``Playthrough.SINGLE``, meaning that first-ending (prima volta) bars are dropped in order
                 to exclude incorrect transitions and adjacencies between the first- and second-ending bars.
@@ -1156,41 +1156,34 @@ def _transform_phrase_data(
     droplevels: bool | Hashable | Sequence[Hashable] = False,
     reverse: bool = False,
     new_level_name: str = "i",
-    wide_format: bool = False,
 ):
     """Returns a dataframe containing the requested phrase components and harmony columns.
 
     Args:
         phrase_df: PhraseAnnotations dataframe.
         columns:
-            Column(s) to include in the result. Passing a list results in an additional index level
-            called "column".
+            Column(s) to include in the result.
         components:
             Which of the four phrase components to include, ∈ {'ante', 'body', 'codetta', 'post'}.
         droplevels:
             Can be a boolean or any level specifier accepted by :meth:`pandas.MultiIndex.droplevel()`.
             If False (default), all levels are retained. If True, only the phrase_id level and
             the ``new_level_name`` are retained. In all other cases, the indicated (string or
-            integer) value(s) must be valid and cause one of the index (or column if
-            ``wide_format``) levelse to be dropped. ``new_level_name`` cannot be dropped. If
-            ``wide_format`` is True, dropping 'phrase_id' will likely lead to an exception
-            regarding duplicate index values.
+            integer) value(s) must be valid and cause one of the index levels to be dropped.
+            ``new_level_name`` cannot be dropped. Dropping 'phrase_id' will likely lead to an
+            exception if a :class:`PhraseData` object will be displayed in WIDE format.
         reverse:
             Pass True to reverse the order of harmonies so that each phrase's last label comes
             first.
         new_level_name:
-            Defaults to 'i', which is the the name of the original level that will be replaced
+            Defaults to 'i', which is the name of the original level that will be replaced
             by this new one. The new one represents the individual integer range for each
             phrase, starting at 0.
-        wide_format:
-            Pass True to pivot the result so that each row (group) exhibits the ``columns`` values
-            of one phrase, one per column. The columns are according to ``new_level_name``.
 
     Returns:
-        Dataframe representing partial information on the selected phrases in long or wide format.
+        Dataframe representing partial information on the selected phrases.
     """
-    result = phrase_df.loc[pd.IndexSlice[:, :, :, components], columns]
-    include_column_level = not isinstance(columns, str)
+    result = phrase_df.loc[pd.IndexSlice[:, :, :, components], columns].copy()
     if reverse:
         result = result[::-1]
     phrase_ids = result.index.get_level_values("phrase_id")
@@ -1210,12 +1203,6 @@ def _transform_phrase_data(
         new_index_df = pd.concat([old_index.to_frame(index=False), new_level], axis=1)
         new_index = pd.MultiIndex.from_frame(new_index_df)
     result.index = new_index
-    if wide_format:
-        result = result.unstack(level=new_level_name)
-        if include_column_level:
-            result.columns.rename("column", level=0, inplace=True)
-            result = result.stack("column")
-        result = result.sort_index(axis=1)
     return result
 
 
@@ -1536,12 +1523,12 @@ class PhraseAnnotations(DcmlAnnotations):
         self,
         n_ante: int = 0,
         n_post: int = 0,
-        format=None,
         resource: Optional[fl.Resource | str] = None,
         descriptor_filename: Optional[str] = None,
         basepath: Optional[str] = None,
         auto_validate: bool = True,
         default_groupby: Optional[str | list[str]] = None,
+        format=None,
         playthrough: Playthrough = Playthrough.SINGLE,
     ) -> None:
         """
@@ -1572,12 +1559,12 @@ class PhraseAnnotations(DcmlAnnotations):
                 to exclude incorrect transitions and adjacencies between the first- and second-ending bars.
         """
         super().__init__(
-            format=format,
             resource=resource,
             descriptor_filename=descriptor_filename,
             basepath=basepath,
             auto_validate=auto_validate,
             default_groupby=default_groupby,
+            format=format,
             playthrough=playthrough,
         )
         self.n_ante = n_ante
@@ -1660,7 +1647,6 @@ class PhraseAnnotations(DcmlAnnotations):
             droplevels=droplevels,
             reverse=reverse,
             new_level_name=new_level_name,
-            wide_format=wide_format,
         )
         if isinstance(columns, str):
             value_column = columns
@@ -1670,6 +1656,7 @@ class PhraseAnnotations(DcmlAnnotations):
             formatted_column = columns[1:]
         result_name = self.resource_name + ".phrase_data"
         default_groupby = self.default_groupby + ["phrase_id"]
+        df_format = PhraseDataFormat.WIDE if wide_format else PhraseDataFormat.LONG
         return PhraseData.from_dataframe(
             analyzed_resource=self,
             value_column=value_column,
@@ -1678,6 +1665,7 @@ class PhraseAnnotations(DcmlAnnotations):
             df=phrase_data,
             resource_name=result_name,
             default_groupby=default_groupby,
+            format=df_format,
         )
 
     def _transform_dataframe(self, feature_df: D) -> D:
@@ -1835,7 +1823,6 @@ class Notes(Feature):
 
     def __init__(
         self,
-        format: NotesFormat = NotesFormat.NAME,
         merge_ties: bool = False,
         weight_grace_notes: float = 0.0,
         resource: Optional[fl.Resource | str] = None,
@@ -1843,14 +1830,12 @@ class Notes(Feature):
         basepath: Optional[str] = None,
         auto_validate: bool = True,
         default_groupby: Optional[str | list[str]] = None,
+        format: NotesFormat = NotesFormat.NAME,
         playthrough: Playthrough = Playthrough.SINGLE,
     ) -> None:
         """
 
         Args:
-            format:
-                :attr:`format`. Format to display the notes in. The default NAME stands for note names, FIFTHS for
-                the number of fifths from C, and MIDI for MIDI numbers.
             merge_ties:
                 If False (default), each row corresponds to a note head, even if it does not the full duration of the
                 represented sounding event or even an onset. Setting to True results in notes being tied over to from a
@@ -1870,6 +1855,9 @@ class Notes(Feature):
                 writing to disk). Set True to raise an exception during creation or modification of the resource,
                 e.g. replacing the :attr:`column_schema`.
             default_groupby: Name of the fields for grouping this resource (usually after a Grouper has been applied).
+            format:
+                :attr:`format`. Format to display the notes in. The default NAME stands for note names, FIFTHS for
+                the number of fifths from C, and MIDI for MIDI numbers.
             playthrough:
                 Defaults to ``Playthrough.SINGLE``, meaning that first-ending (prima volta) bars are dropped in order
                 to exclude incorrect transitions and adjacencies between the first- and second-ending bars.

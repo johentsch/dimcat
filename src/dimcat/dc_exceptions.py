@@ -485,3 +485,15 @@ class SlicerNotSetUpError(DimcatError):
         1: lambda name: f"The {name!r} has not been setup. Applying it would result in empty features. "
         f"Set the attribute 'slice_intervals'.",
     }
+
+
+class UnknownFormat(DimcatError):
+    """optional args: (format_value, format_enum, resource_type, resource_name)"""
+
+    nargs2message = {
+        0: "Unknown format.",
+        1: lambda value: f"Unknown format: {value}.",
+        2: lambda value, format: f"Unknown value {value} for {format}.",
+        3: lambda value, format, resource: f"{resource} expects {format} but got unknown value {value}.",
+        4: lambda value, format, resource, name: f"{resource} {name!r} expects {format} but got unknown value {value}.",
+    }
