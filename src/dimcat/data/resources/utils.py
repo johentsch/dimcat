@@ -551,7 +551,10 @@ def infer_piece_col_position(
 
 
 def infer_schema_from_df(
-    df: SomeDataframe, include_index_levels: bool = True, **kwargs
+    df: SomeDataframe,
+    include_index_levels: bool = True,
+    allow_integer_names: bool = True,
+    **kwargs,
 ) -> fl.Schema:
     """Infer a frictionless.Schema from a dataframe.
 
@@ -578,6 +581,8 @@ def infer_schema_from_df(
         column_names = index_levels + column_names
     else:
         index_levels = None
+    if allow_integer_names:
+        column_names = list(map(str, column_names))
     n_columns = len(column_names)
     n_unique = len(set(column_names))
     if n_unique < n_columns:

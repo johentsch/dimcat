@@ -32,7 +32,7 @@ from dimcat.data.resources.dc import (
     SliceIntervals,
     UnitOfAnalysis,
 )
-from dimcat.data.resources.results import tuple2str
+from dimcat.data.resources.results import PhraseData, tuple2str
 from dimcat.data.resources.utils import (
     boolean_is_minor_column_to_mode,
     condense_dataframe_by_groups,
@@ -1669,7 +1669,7 @@ class PhraseAnnotations(DcmlAnnotations):
                     phrase_df.index, set(idx), idx.names
                 )
                 phrase_df = phrase_df[mask]
-        return _transform_phrase_data(
+        phrase_data = _transform_phrase_data(
             phrase_df=phrase_df,
             columns=columns,
             components=components,
@@ -1677,6 +1677,23 @@ class PhraseAnnotations(DcmlAnnotations):
             reverse=reverse,
             new_level_name=new_level_name,
             wide_format=wide_format,
+        )
+        if isinstance(columns, str):
+            value_column = columns
+            formatted_column = None
+        else:
+            value_column = columns[0]
+            formatted_column = columns[1:]
+        result_name = self.resource_name + ".phrase_data"
+        default_groupby = self.default_groupby + ["phrase_id"]
+        return PhraseData.from_dataframe(
+            analyzed_resource=self,
+            value_column=value_column,
+            dimension_column="duration_qb",
+            formatted_column=formatted_column,
+            df=phrase_data,
+            resource_name=result_name,
+            default_groupby=default_groupby,
         )
 
     @property
