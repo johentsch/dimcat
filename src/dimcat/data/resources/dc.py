@@ -931,29 +931,6 @@ DimcatResource.__init__(
             new_resource._default_groupby.remove(level)
         return new_resource
 
-    def _format_dataframe(self, df: D) -> D:
-        """Format the dataframe before it is set for this resource. The method is called by :meth:`_set_dataframe`
-        and typically adds convenience columns. Assumes that the dataframe can be mutated safely, i.e. that it is a
-        copy.
-
-        Most features have a line such as
-
-        .. code-block:: python
-
-            df = df._drop_rows_with_missing_values(df, column_names=self._feature_column_names)
-
-        to keep only fully defined objects. The index is not reset to retain
-        traceability to the original facet. In some cases, the durations need to adjusted when dropping rows. For
-        example, 'adjacency groups', i.e., subsequent identical values, can be merged using the pattern
-
-        .. code-block:: python
-
-            group_keys, _ = make_adjacency_groups(<feature column(s)>, groupby=<groupby_levels>)
-            feature_df = condense_dataframe_by_groups(df, group_keys)
-
-        """
-        return df
-
     def _get_current_status(self) -> ResourceStatus:
         if self.is_packaged:
             if self.is_loaded:
@@ -1286,7 +1263,10 @@ DimcatResource.__init__(
 
     def _set_dataframe(self, df: D):
         """Sets the dataframe without prior checks and assuming that it can be mutated safely, i.e. it is a copy."""
-        df = self._format_dataframe(df)
+        df = self._transform_dataframe(
+            df
+        )  # ToDo: Should be reduced to a minimum, or replaced by a check_df method
+        # see docstring of :meth:`_transform_freature_df`
         self._df = df
         if not self.column_schema.fields:
             try:
@@ -1397,9 +1377,39 @@ DimcatResource.__init__(
                 f"{self.status!r}"
             )
 
+    def _transform_dataframe(self, df: D) -> D:
+        """Format the dataframe before it is set for this resource. The method is called by :meth:`_set_dataframe`
+        and typically adds convenience columns. Assumes that the dataframe can be mutated safely, i.e. that it is a
+        copy.
+
+        Most features have a line such as
+
+        .. code-block:: python
+
+            df = df._drop_rows_with_missing_values(df, column_names=self._feature_column_names)
+
+        to keep only fully defined objects. The index is not reset to retain
+        traceability to the original facet. In some cases, the durations need to adjusted when dropping rows. For
+        example, 'adjacency groups', i.e., subsequent identical values, can be merged using the pattern
+
+        .. code-block:: python
+
+            group_keys, _ = make_adjacency_groups(<feature column(s)>, groupby=<groupby_levels>)
+            feature_df = condense_dataframe_by_groups(df, group_keys)
+
+        """
+        return df
+
     def _transform_feature_df(self, feature_df: D, feature_config: DimcatConfig) -> D:
-        """Transform the dataframe after it has been prepared for feature extraction. This frequently involves
-        dropping rows."""
+        """This method is called by :meth:`._extract_feature` after :meth:`_prepare_feature` in order to apply the
+        necessary transformations so that the dataframe can be passed to the Feature constructor. The most heavy use
+        for this method is for Facets, whose main purpose is to transform their (custom) data into the formats that the
+        respective Features expect. At least, this is how the mechanism is supposed to be; de facto, many features
+        currently expect the dataframe format as it comes from a MuseScoreFacet and all the transformation happens in
+        :meth:`_transform_df`. In principle, use of the latter should be reduced to the bare minimum which will make
+        for a cleaner architecture and get rid of some problems. E.g., right now, _transform_dataframe() is called on
+        any new dataframe regardless of whether it has already been transformed before or not.
+        """
         return feature_df
 
     def _sort_columns(self, df: D) -> D:
@@ -2003,12 +2013,6 @@ class Feature(DimcatResource):
             return result.drop(columns="quarterbeats_all_endings")
         return result.copy()
 
-    def _format_dataframe(self, feature_df: D) -> D:
-        """Called by :meth:`_prepare_feature_df` to transform the resource dataframe into a feature dataframe.
-        Assumes that the dataframe can be mutated safely, i.e. that it is a copy.
-        """
-        return self._apply_playthrough(feature_df)
-
     def get_available_column_names(
         self,
         index_levels: bool = False,
@@ -2031,6 +2035,12 @@ class Feature(DimcatResource):
         if index_levels:
             available_columns = self.get_level_names() + available_columns
         return available_columns
+
+    def _transform_dataframe(self, feature_df: D) -> D:
+        """Called by :meth:`_set_dataframe` to transform the dataframe before incorporating it.
+        Assumes that the dataframe can be mutated safely, i.e. that it is a copy.
+        """
+        return self._apply_playthrough(feature_df)
 
 
 FeatureSpecs: TypeAlias = Union[MutableMapping, Feature, FeatureName, str]

@@ -209,8 +209,8 @@ class DcmlAnnotations(Annotations):
         FeatureName.PhraseLabels,
     )
 
-    def _format_dataframe(self, feature_df: D) -> D:
-        """Called by :meth:`_prepare_feature_df` to transform the resource dataframe into a feature dataframe.
+    def _transform_dataframe(self, feature_df: D) -> D:
+        """Called by :meth:`_set_dataframe` to transform the dataframe before incorporating it.
         Assumes that the dataframe can be mutated safely, i.e. that it is a copy.
         """
         feature_df = self._apply_playthrough(feature_df)
@@ -581,8 +581,8 @@ class HarmonyLabels(DcmlAnnotations):
             return self._default_formatted_column
         return
 
-    def _format_dataframe(self, feature_df: D) -> D:
-        """Called by :meth:`_prepare_feature_df` to transform the resource dataframe into a feature dataframe.
+    def _transform_dataframe(self, feature_df: D) -> D:
+        """Called by :meth:`_set_dataframe` to transform the dataframe before incorporating it.
         Assumes that the dataframe can be mutated safely, i.e. that it is a copy.
         """
         feature_df = self._apply_playthrough(feature_df)
@@ -773,8 +773,8 @@ class BassNotes(HarmonyLabels):
             return self._default_formatted_column
         return
 
-    def _format_dataframe(self, feature_df: D) -> D:
-        """Called by :meth:`_prepare_feature_df` to transform the resource dataframe into a feature dataframe.
+    def _transform_dataframe(self, feature_df: D) -> D:
+        """Called by :meth:`_set_dataframe` to transform the dataframe before incorporating it.
         Assumes that the dataframe can be mutated safely, i.e. that it is a copy.
         """
         feature_df = self._apply_playthrough(feature_df)
@@ -912,8 +912,8 @@ class CadenceLabels(DcmlAnnotations):
         self._format = format
         self._formatted_column = new_formatted_column
 
-    def _format_dataframe(self, feature_df: D) -> D:
-        """Called by :meth:`_prepare_feature_df` to transform the resource dataframe into a feature dataframe.
+    def _transform_dataframe(self, feature_df: D) -> D:
+        """Called by :meth:`_set_dataframe` to transform the dataframe before incorporating it.
         Assumes that the dataframe can be mutated safely, i.e. that it is a copy.
         """
         feature_df = self._apply_playthrough(feature_df)
@@ -935,8 +935,8 @@ class KeyAnnotations(DcmlAnnotations):
     _extractable_features = None
     _default_value_column = "localkey_and_mode"
 
-    def _format_dataframe(self, feature_df: D) -> D:
-        """Called by :meth:`_prepare_feature_df` to transform the resource dataframe into a feature dataframe.
+    def _transform_dataframe(self, feature_df: D) -> D:
+        """Called by :meth:`_set_dataframe` to transform the dataframe before incorporating it.
         Assumes that the dataframe can be mutated safely, i.e. that it is a copy.
         """
         feature_df = self._apply_playthrough(feature_df)
@@ -1583,26 +1583,10 @@ class PhraseAnnotations(DcmlAnnotations):
         self.n_ante = n_ante
         self.n_post = n_post
 
-    def _format_dataframe(self, feature_df: D) -> D:
-        """Called by :meth:`_prepare_feature_df` to transform the resource dataframe into a feature dataframe.
-        Assumes that the dataframe can be mutated safely, i.e. that it is a copy.
-        """
-        level_names = feature_df.index.names
-        if "phrase_id" in level_names and "phrase_component" in level_names:
-            return feature_df
-        feature_df = self._apply_playthrough(feature_df)
-        feature_df.chord.ffill(inplace=True)
-        feature_df = extend_keys_feature(feature_df)
-        groupby_levels = feature_df.index.names[:-1]
-        group_intervals = get_index_intervals_for_phrases(
-            harmony_labels=feature_df,
-            group_cols=groupby_levels,
-            n_ante=self.n_ante,
-            n_post=self.n_post,
-            logger=self.logger,
-        )
-        ix_intervals = sum(group_intervals.values(), [])
-        return make_raw_phrase_df(feature_df, ix_intervals, self.logger)
+    @property
+    def phrase_df(self) -> D:
+        """Alias for :meth:`df`."""
+        return self.df
 
     def filter_phrase_data(
         self,
@@ -1696,10 +1680,26 @@ class PhraseAnnotations(DcmlAnnotations):
             default_groupby=default_groupby,
         )
 
-    @property
-    def phrase_df(self) -> D:
-        """Alias for :meth:`df`."""
-        return self.df
+    def _transform_dataframe(self, feature_df: D) -> D:
+        """Called by :meth:`_set_dataframe` to transform the dataframe before incorporating it.
+        Assumes that the dataframe can be mutated safely, i.e. that it is a copy.
+        """
+        level_names = feature_df.index.names
+        if "phrase_id" in level_names and "phrase_component" in level_names:
+            return feature_df
+        feature_df = self._apply_playthrough(feature_df)
+        feature_df.chord.ffill(inplace=True)
+        feature_df = extend_keys_feature(feature_df)
+        groupby_levels = feature_df.index.names[:-1]
+        group_intervals = get_index_intervals_for_phrases(
+            harmony_labels=feature_df,
+            group_cols=groupby_levels,
+            n_ante=self.n_ante,
+            n_post=self.n_post,
+            logger=self.logger,
+        )
+        ix_intervals = sum(group_intervals.values(), [])
+        return make_raw_phrase_df(feature_df, ix_intervals, self.logger)
 
 
 class PhraseComponents(PhraseAnnotations):
@@ -1712,8 +1712,8 @@ class PhraseComponents(PhraseAnnotations):
         """
         return self._phrase_df
 
-    def _format_dataframe(self, feature_df: D) -> D:
-        self._phrase_df = super()._format_dataframe(feature_df)
+    def _transform_dataframe(self, feature_df: D) -> D:
+        self._phrase_df = super()._transform_dataframe(feature_df)
         return condense_components(self._phrase_df)
 
 
@@ -1727,8 +1727,8 @@ class PhraseLabels(PhraseAnnotations):
         """
         return self._phrase_df
 
-    def _format_dataframe(self, feature_df: D) -> D:
-        self._phrase_df = super()._format_dataframe(feature_df)
+    def _transform_dataframe(self, feature_df: D) -> D:
+        self._phrase_df = super()._transform_dataframe(feature_df)
         return condense_phrases(self._phrase_df)
 
 
@@ -1918,8 +1918,8 @@ class Notes(Feature):
     def weight_grace_notes(self) -> float:
         return self._weight_grace_notes
 
-    def _format_dataframe(self, feature_df: D) -> D:
-        """Called by :meth:`_prepare_feature_df` to transform the resource dataframe into a feature dataframe.
+    def _transform_dataframe(self, feature_df: D) -> D:
+        """Called by :meth:`_set_dataframe` to transform the dataframe before incorporating it.
         Assumes that the dataframe can be mutated safely, i.e. that it is a copy.
         """
         feature_df = self._apply_playthrough(feature_df)
