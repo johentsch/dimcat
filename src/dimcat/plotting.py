@@ -69,8 +69,10 @@ def clean_axis_labels(*labels: str) -> dict:
             continue
         if label in default_labels:
             cleaned_label = default_labels[label]
-        else:
+        elif isinstance(label, str):
             cleaned_label = label.replace("_", " ")
+        else:
+            cleaned_label = str(label)
         result[label] = cleaned_label
     return result
 
