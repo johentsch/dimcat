@@ -1211,20 +1211,11 @@ def _transform_phrase_data(
         new_index = pd.MultiIndex.from_frame(new_index_df)
     result.index = new_index
     if wide_format:
-        if droplevels is True:
-            result = result.unstack(level="phrase_id")
-            if include_column_level:
-                result.columns.rename("column", level=0, inplace=True)
-                result = result.swaplevel(0, 1, axis=1)
-        else:
-            result = result.unstack(result.index.names[:-1])
-            if include_column_level:
-                result.columns.rename("column", level=0, inplace=True)
-                level_order = list(result.columns.names)
-                result.columns = result.columns.reorder_levels(
-                    level_order[1:] + level_order[:1]
-                )
-        result = result.T.sort_index()
+        result = result.unstack(level=new_level_name)
+        if include_column_level:
+            result.columns.rename("column", level=0, inplace=True)
+            result = result.stack("column")
+        result = result.sort_index(axis=1)
     return result
 
 
