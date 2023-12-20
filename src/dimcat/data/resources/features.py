@@ -2,7 +2,19 @@ from __future__ import annotations
 
 import itertools
 import logging
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Hashable,
+    Iterable,
+    List,
+    Literal,
+    Optional,
+    Sequence,
+    Tuple,
+    TypeAlias,
+)
 
 import frictionless as fl
 import marshmallow as mm
@@ -27,6 +39,7 @@ from dimcat.data.resources.utils import (
     get_corpus_display_name,
     join_df_on_index,
     make_adjacency_groups,
+    make_boolean_mask_from_set_of_tuples,
     merge_ties,
 )
 from dimcat.dc_exceptions import (
@@ -37,6 +50,7 @@ from dimcat.dc_exceptions import (
 from dimcat.utils import get_middle_composition_year
 
 module_logger = logging.getLogger(__name__)
+phraseComp: TypeAlias = Literal["ante", "body", "codetta", "post"]
 
 
 class Metadata(Feature):
@@ -1009,13 +1023,15 @@ def _get_index_intervals_for_phrases(
             included_ends = [ix for ix in ends_ix if ix in potential]
             n_ends = len(included_ends)
             if not n_ends:
+                inspect_series = markers.loc[fro + 1 : to + 1].dropna()
                 logger.warning(
-                    f"Phrase has no end symbol in [{fro}:{to}]:\n{markers.loc[fro:to+1]}"
+                    f"Phrase [{fro}:{to}] was expected to have an end symbol within [{fro+1}:{to+1}]:\n{inspect_series}"
                 )
                 return (fro, None, to)
             elif n_ends > 2:
+                inspect_series = markers.loc[fro + 1 : to + 1].dropna()
                 logger.warning(
-                    f"Phrase has multiple end symbols:\n{markers.loc[fro:to+1]}"
+                    f"Phrase [{fro}:{to}] has multiple end symbols within [{fro+1}:{to+1}]:\n{inspect_series}"
                 )
                 return (fro, None, to)
             end_ix = included_ends[0]
@@ -1101,6 +1117,115 @@ def _condense_component(
     row_values = first_row.to_dict()
     row_values.update(component_info)
     return pd.Series(row_values, name=first_row.name)
+
+
+def _make_groupwise_range_index(idx: pd.Index) -> npt.NDArray:
+    """Turns adjacency groups into integer ranges starting from 0.
+
+    The algorithm builds on Warren Weckesser's approach via https://stackoverflow.com/a/20033438
+    """
+    arr = idx.to_numpy()
+    start_mask = arr != np.roll(arr, 1)
+    (start_index,) = np.where(start_mask)
+    group_lengths = start_index[1:] - start_index[:-1]
+    incr = np.asarray(~start_mask, int)
+    incr[start_index[1:]] = 1 - group_lengths
+    incr.cumsum(out=incr)
+    return incr
+
+
+def make_multiindex_for_unstack(
+    idx: pd.Index, new_level_name: str = "i"
+) -> pd.MultiIndex:
+    """Turns an index that contains adjacency groups (adjacent entries having the same value) into
+    a 2-level MultiIndex where the new level represents an individual integer range for each group,
+    starting at 0.
+    """
+    old_level_name = idx.name
+    groupwise_ranges = _make_groupwise_range_index(idx)
+    result = pd.MultiIndex.from_arrays(
+        [idx, groupwise_ranges], names=[old_level_name, new_level_name]
+    )
+    return result
+
+
+def _transform_phrase_data(
+    phrase_df,
+    columns: str | List[str] = "chord",
+    components: phraseComp | List[phraseComp] = "body",
+    droplevels: bool | Hashable | Sequence[Hashable] = False,
+    reverse: bool = False,
+    new_level_name: str = "i",
+    wide_format: bool = False,
+):
+    """Returns a dataframe containing the requested phrase components and harmony columns.
+
+    Args:
+        phrase_df: PhraseAnnotations dataframe.
+        columns:
+            Column(s) to include in the result. Passing a list results in an additional index level
+            called "column".
+        components:
+            Which of the four phrase components to include, ∈ {'ante', 'body', 'codetta', 'post'}.
+        droplevels:
+            Can be a boolean or any level specifier accepted by :meth:`pandas.MultiIndex.droplevel()`.
+            If False (default), all levels are retained. If True, only the phrase_id level and
+            the ``new_level_name`` are retained. In all other cases, the indicated (string or
+            integer) value(s) must be valid and cause one of the index (or column if
+            ``wide_format``) levelse to be dropped. ``new_level_name`` cannot be dropped. If
+            ``wide_format`` is True, dropping 'phrase_id' will likely lead to an exception
+            regarding duplicate index values.
+        reverse:
+            Pass True to reverse the order of harmonies so that each phrase's last label comes
+            first.
+        new_level_name:
+            Defaults to 'i', which is the the name of the original level that will be replaced
+            by this new one. The new one represents the individual integer range for each
+            phrase, starting at 0.
+        wide_format:
+            Pass True to pivot the result so that each row (group) exhibits the ``columns`` values
+            of one phrase, one per column. The columns are according to ``new_level_name``.
+
+    Returns:
+        Dataframe representing partial information on the selected phrases in long or wide format.
+    """
+    result = phrase_df.loc[pd.IndexSlice[:, :, :, components], columns]
+    include_column_level = not isinstance(columns, str)
+    if reverse:
+        result = result[::-1]
+    phrase_ids = result.index.get_level_values("phrase_id")
+    if droplevels is True:
+        new_index = make_multiindex_for_unstack(
+            phrase_ids, new_level_name=new_level_name
+        )
+    else:
+        old_index = result.index.droplevel(-1)
+        if not droplevels:
+            pass
+        else:
+            old_index = old_index.droplevel(droplevels)
+        new_level = pd.Series(
+            _make_groupwise_range_index(phrase_ids), name=new_level_name
+        )
+        new_index_df = pd.concat([old_index.to_frame(index=False), new_level], axis=1)
+        new_index = pd.MultiIndex.from_frame(new_index_df)
+    result.index = new_index
+    if wide_format:
+        if droplevels is True:
+            result = result.unstack(level="phrase_id")
+            if include_column_level:
+                result.columns.rename("column", level=0, inplace=True)
+                result = result.swaplevel(0, 1, axis=1)
+        else:
+            result = result.unstack(result.index.names[:-1])
+            if include_column_level:
+                result.columns.rename("column", level=0, inplace=True)
+                level_order = list(result.columns.names)
+                result.columns = result.columns.reorder_levels(
+                    level_order[1:] + level_order[:1]
+                )
+        result = result.T.sort_index()
+    return result
 
 
 def _compile_component_info(
@@ -1387,6 +1512,17 @@ def _get_body_end_positions_from_raw_phrases(phrase_df: D) -> List[int]:
     return body_end_positions
 
 
+def tuple_contains(series_with_tuples: S, *values: Hashable):
+    """Function that can be used in queries passed to :meth:`PhraseLabels.filter_phrase_data` to select rows in which
+    the column's tuples contain any of the given values.
+
+    Example
+
+    """
+    values = set(values)
+    return series_with_tuples.map(values.intersection).astype(bool)
+
+
 class PhraseAnnotations(DcmlAnnotations):
     _auxiliary_column_names = ["label", "localkey", "chord"]
     _convenience_column_names = KEY_CONVENIENCE_COLUMNS + [
@@ -1464,6 +1600,7 @@ class PhraseAnnotations(DcmlAnnotations):
         if "phrase_id" in level_names and "phrase_component" in level_names:
             return feature_df
         feature_df = self._apply_playthrough(feature_df)
+        feature_df.chord.ffill(inplace=True)
         feature_df = extend_keys_feature(feature_df)
         groupby_levels = feature_df.index.names[:-1]
         group_intervals = get_index_intervals_for_phrases(
@@ -1476,21 +1613,115 @@ class PhraseAnnotations(DcmlAnnotations):
         ix_intervals = sum(group_intervals.values(), [])
         return make_raw_phrase_df(feature_df, ix_intervals, self.logger)
 
+    def filter_phrase_data(
+        self,
+        columns: str | List[str] = "label",
+        components: phraseComp | List[phraseComp] = "body",
+        droplevels: bool = False,
+        reverse: bool = False,
+        new_level_name: str = "i",
+        wide_format: bool = False,
+        query: Optional[str] = None,
+    ) -> D:
+        """
+
+        Args:
+            columns:
+                Column(s) to include in the result. Passing a list results in an additional index
+                level called "column".
+            components:
+                Which of the four phrase components to include, ∈ {'ante', 'body', 'codetta', 'post'}.
+            droplevels:
+                Can be a boolean or any level specifier accepted by :meth:`pandas.MultiIndex.droplevel()`.
+                If False (default), all levels are retained. If True, only the phrase_id level and
+                the ``new_level_name`` are retained. In all other cases, the indicated (string or
+                integer) value(s) must be valid and cause one of the index (or column if
+                ``wide_format``) levelse to be dropped. ``new_level_name`` cannot be dropped. If
+                ``wide_format`` is True, dropping 'phrase_id' will likely lead to an exception
+                regarding duplicate index values.
+            reverse:
+                Pass True to reverse the order of harmonies so that each phrase's last label comes
+                first.
+            new_level_name:
+                Defaults to 'i', which is the the name of the original level that will be replaced
+                by this new one. The new one represents the individual integer range for each
+                phrase, starting at 0.
+            wide_format:
+                Pass True to unstack the result so that the columns for each phrase are concatenated
+                side by side.
+            query:
+                A convient way to include only those phrases in the result that match the criteria
+                formulated in the string query. A query is a string and generally takes the form
+                "<column_name> <operator> <value>". Several criteria can be combined using boolean
+                operators, e.g. "localkey_mode == 'major' & label.str.contains('/')". This option
+                is particularly interesting when used on :class:`PhraseLabels` because it enables
+                queries based on the properties of phrases such as
+                "body_n_modulations == 0 & end_label.str.contains('IAC')".  For the columns
+                containing tuples, you can used a special function to filter those rows that
+                contain any of the specified values:
+                "@tuple_contains(body_chords, 'V(94)', 'V(9)', 'V(4)')".
+
+        Returns:
+            Dataframe representing partial information on the selected phrases in long or wide format.
+        """
+        phrase_df = self.phrase_df
+        if query:
+            if self.name == "PhraseAnnotations":
+                phrase_df = phrase_df.query(query)
+            else:
+                # for PhraseComponents and PhraseLabels, the filtering is performed on their respective feature df,
+                # then the phrase_df (which corresponds to a PhraseAnnotations dataframe) is filtered based on the
+                # result
+                filtered_df = self.df.query(query)
+                idx = filtered_df.index
+                mask = make_boolean_mask_from_set_of_tuples(
+                    phrase_df.index, set(idx), idx.names
+                )
+                phrase_df = phrase_df[mask]
+        return _transform_phrase_data(
+            phrase_df=phrase_df,
+            columns=columns,
+            components=components,
+            droplevels=droplevels,
+            reverse=reverse,
+            new_level_name=new_level_name,
+            wide_format=wide_format,
+        )
+
+    @property
+    def phrase_df(self) -> D:
+        """Alias for :meth:`df`."""
+        return self.df
+
 
 class PhraseComponents(PhraseAnnotations):
     _extractable_features = None
 
+    @property
+    def phrase_df(self) -> D:
+        """Returns the df that corresponds to the :class:`PhraseAnnotations` feature from which the
+        PhraseComponents were derived.
+        """
+        return self._phrase_df
+
     def _format_dataframe(self, feature_df: D) -> D:
-        phrase_df = super()._format_dataframe(feature_df)
-        return condense_components(phrase_df)
+        self._phrase_df = super()._format_dataframe(feature_df)
+        return condense_components(self._phrase_df)
 
 
 class PhraseLabels(PhraseAnnotations):
     _extractable_features = None
 
+    @property
+    def phrase_df(self) -> D:
+        """Returns the df that corresponds to the :class:`PhraseAnnotations` feature from which the
+        PhraseLabels were derived.
+        """
+        return self._phrase_df
+
     def _format_dataframe(self, feature_df: D) -> D:
-        phrase_df = super()._format_dataframe(feature_df)
-        return condense_phrases(phrase_df)
+        self._phrase_df = super()._format_dataframe(feature_df)
+        return condense_phrases(self._phrase_df)
 
 
 # endregion Annotations
