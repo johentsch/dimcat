@@ -82,6 +82,7 @@ class NgramTableFormat(FriendlyEnum):
 
 
 class NgramAnalyzer(Analyzer):
+    _allowed_features = (Feature,)
     _new_resource_type = NgramTable
 
     @staticmethod

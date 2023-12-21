@@ -482,8 +482,8 @@ class ResourceNotProcessableError(DimcatError):
     nargs2message = {
         0: "Cannot process this Resource.",
         1: lambda name: f"Cannot process {name!r}.",
-        2: lambda name, step: f"{step!r} cannot process Resource {name!r}.",
-        3: lambda name, step, resource_type: f"{step!r} cannot process Resource {name!r} of type {resource_type!r}.",
+        2: lambda name, step: f"{step!r} cannot process {name!r}.",
+        3: lambda name, step, resource_type: f"{step!r} cannot process {name!r} of type {resource_type!r}.",
     }
 
 

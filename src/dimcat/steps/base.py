@@ -27,7 +27,6 @@ from dimcat.base import (
     DimcatConfig,
     DimcatObject,
     ObjectEnum,
-    get_class,
     get_schema,
     is_instance_of,
 )
@@ -44,6 +43,7 @@ from dimcat.data.resources.base import (
 )
 from dimcat.data.resources.dc import DimcatResource, FeatureSpecs
 from dimcat.data.resources.utils import (
+    check_configs_against_allowed_configs,
     feature_specs2config,
     features_argument2config_list,
 )
@@ -386,11 +386,12 @@ class FeatureProcessingStep(PipelineStep):
         """
         super().check_resource(resource)
         if self._allowed_features:
-            if not any(
-                issubclass(resource.__class__, get_class(f))
-                for f in self._allowed_features
-            ):
-                raise ResourceNotProcessableError(resource.name, self.name)
+            try:
+                check_configs_against_allowed_configs(
+                    resource.to_config(), self._allowed_features
+                )
+            except ResourceNotProcessableError as e:
+                raise ResourceNotProcessableError(resource.name, self.name) from e
 
     def _iter_features(self, dataset: Dataset) -> Iterator[DimcatResource]:
         """Iterate over all features that are required for this PipelineStep.

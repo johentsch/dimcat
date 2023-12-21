@@ -315,11 +315,26 @@ def features_argument2config_list(
     for specs in features:
         configs.append(feature_specs2config(specs))
     if allowed_configs is not None:
-        allowed_configs = features_argument2config_list(allowed_configs)
-        for config in configs:
-            if not any(config.matches(allowed) for allowed in allowed_configs):
-                raise ResourceNotProcessableError(config.options_dtype)
+        check_configs_against_allowed_configs(configs, allowed_configs)
     return configs
+
+
+def check_configs_against_allowed_configs(
+    configs: DimcatConfig | Iterable[DimcatConfig],
+    allowed_configs: Optional[FeatureSpecs | Iterable[FeatureSpecs]],
+):
+    """Matches configs against allowed configs and raises as soon as any pair does not match. Two
+    configs match if they have the same dtype and any overlapping key has the same value.
+
+    Raises:
+        ResourceNotProcessableError when any of the configs doesn't match with any of the allowed configs.
+    """
+    if isinstance(configs, DimcatConfig):
+        configs = [configs]
+    allowed_configs = features_argument2config_list(allowed_configs)
+    for configs in configs:
+        if not any(configs.matches(allowed) for allowed in allowed_configs):
+            raise ResourceNotProcessableError(configs.options_dtype)
 
 
 T = TypeVar("T")
