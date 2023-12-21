@@ -449,7 +449,7 @@ class DimcatConfig(MutableMapping, DimcatObject):
                     f"Dump of DimcatConfig(dtype={options_dtype}) created with a {self.name} could not be "
                     f"validated by {dtype_schema.name} :\n{report}"
                 )
-            return data
+            return dict(data)
 
     def __init__(
         self, options: Dict | DimcatConfig = (), dtype: Optional[str] = None, **kwargs
