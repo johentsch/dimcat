@@ -38,7 +38,6 @@ from dimcat.data.packages.dc import DimcatPackage
 from dimcat.data.resources.base import (
     DR,
     F,
-    FeatureName,
     Resource,
     ResourceSpecs,
     resource_specs2resource,
@@ -51,6 +50,7 @@ from dimcat.data.resources.utils import (
 from dimcat.dc_exceptions import (
     EmptyDatasetError,
     EmptyResourceError,
+    FeatureNotProcessableError,
     FeatureUnavailableError,
     NoFeaturesActiveError,
     ResourceAlreadyTransformed,
@@ -283,7 +283,7 @@ class FeatureProcessingStep(PipelineStep):
 
     """
 
-    _allowed_features: ClassVar[Optional[Tuple[FeatureName, ...]]] = None
+    _allowed_features: ClassVar[Optional[Tuple[FeatureSpecs, ...]]] = None
     """If set, this FeatureProcessingStep can only be initialized with features that are in this tuple."""
 
     _output_package_name: ClassVar[Optional[str]] = None
@@ -336,9 +336,14 @@ class FeatureProcessingStep(PipelineStep):
 
     @features.setter
     def features(self, features):
-        configs = features_argument2config_list(
-            features, allowed_features=self._allowed_features
-        )
+        try:
+            configs = features_argument2config_list(
+                features, allowed_configs=self._allowed_features
+            )
+        except ResourceNotProcessableError as e:
+            raise FeatureNotProcessableError(
+                features, self.name, self._allowed_features
+            ) from e
         if len(self._features) > 0:
             self.logger.info(
                 f"Previously selected features {self._features} overwritten by {configs}."

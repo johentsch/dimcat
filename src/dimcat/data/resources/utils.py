@@ -305,7 +305,7 @@ def feature_specs2config(feature: FeatureSpecs) -> DimcatConfig:
 
 def features_argument2config_list(
     features: Optional[FeatureSpecs | Iterable[FeatureSpecs]] = None,
-    allowed_features: Optional[Iterable[str | FeatureName]] = None,
+    allowed_configs: Optional[FeatureSpecs | Iterable[FeatureSpecs]] = None,
 ) -> List[DimcatConfig]:
     if features is None:
         return []
@@ -314,10 +314,10 @@ def features_argument2config_list(
     configs = []
     for specs in features:
         configs.append(feature_specs2config(specs))
-    if allowed_features:
-        allowed_features = [FeatureName(f) for f in allowed_features]
+    if allowed_configs is not None:
+        allowed_configs = features_argument2config_list(allowed_configs)
         for config in configs:
-            if config.options_dtype not in allowed_features:
+            if not any(config.matches(allowed) for allowed in allowed_configs):
                 raise ResourceNotProcessableError(config.options_dtype)
     return configs
 

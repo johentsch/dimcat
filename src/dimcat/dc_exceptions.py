@@ -183,6 +183,17 @@ class FeatureIsMissingFormatColumnError(DimcatError):
     }
 
 
+class FeatureNotProcessableError(DimcatError):
+    """optional args: (resource_name, pipeline_step, allowed)"""
+
+    nargs2message = {
+        0: "Cannot process this Feature.",
+        1: lambda name: f"Cannot process {name!r}.",
+        2: lambda name, step: f"{step!r} cannot process {name!r}.",
+        3: lambda name, step, allowed: f"{step!r} cannot process {name!r}. Allowed feature specs are:\n{allowed!r}.",
+    }
+
+
 class FeatureWithUndefinedValueColumnError(DimcatError):
     """optional args: (feature_name, feature_type"""
 
