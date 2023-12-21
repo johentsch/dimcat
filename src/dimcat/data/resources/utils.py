@@ -28,7 +28,12 @@ import frictionless as fl
 import ms3
 import numpy as np
 import pandas as pd
-from dimcat.base import DimcatConfig, get_setting, is_instance_of, is_subclass_of
+from dimcat.base import (
+    DimcatConfig,
+    get_setting,
+    is_instance_of,
+    make_config_from_specs,
+)
 from dimcat.data.utils import make_fl_resource
 from dimcat.dc_exceptions import (
     ResourceIsMissingPieceIndexError,
@@ -289,32 +294,13 @@ def ensure_level_named_piece(
 
 
 def feature_specs2config(feature: FeatureSpecs) -> DimcatConfig:
-    """Converts a feature specification into a dimcat configuration.
+    """Converts a feature specification to a DimcatConfig.
 
     Raises:
-        TypeError: If the feature cannot be converted to a dimcat configuration.
+        TypeError:
+            If the specs cannot be resolved to a :class:`DimcatConfig` that describes a Feature.
     """
-    if isinstance(feature, DimcatConfig):
-        feature_config = feature
-    elif is_instance_of(feature, "Feature"):
-        feature_config = feature.to_config()
-    elif isinstance(feature, MutableMapping):
-        feature_config = DimcatConfig(feature)
-    elif isinstance(feature, str):
-        feature_name = FeatureName(feature)
-        feature_config = DimcatConfig(dtype=feature_name)
-    else:
-        raise TypeError(
-            f"Cannot convert the {type(feature).__name__} {feature!r} to DimcatConfig."
-        )
-    if feature_config.options_dtype == "DimcatConfig":
-        feature_config = DimcatConfig(feature_config["options"])
-    if not is_subclass_of(feature_config.options_dtype, "Feature"):
-        raise TypeError(
-            f"DimcatConfig describes a {feature_config.options_dtype}, not a Feature: "
-            f"{feature_config.options}"
-        )
-    return feature_config
+    return make_config_from_specs(feature, "Feature")
 
 
 def features_argument2config_list(

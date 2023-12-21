@@ -18,6 +18,7 @@ from typing import (
     Sequence,
     Set,
     Tuple,
+    Type,
     TypeAlias,
     Union,
     overload,
@@ -35,7 +36,7 @@ from dimcat.base import (
     LowercaseEnum,
     get_class,
     get_setting,
-    resolve_object_specs,
+    make_object_from_specs,
 )
 from dimcat.data.base import Data
 from dimcat.data.resources.base import (
@@ -840,7 +841,7 @@ DimcatResource.__init__(
             single_step = step[0]
             if isinstance(single_step, (list, tuple)):
                 return self.apply_step(*single_step)
-            step_obj = resolve_object_specs(single_step, "PipelineStep")
+            step_obj = make_object_from_specs(single_step, "PipelineStep")
             return step_obj.process_resource(self)
         Constructor = get_class("Pipeline")
         pipeline = Constructor(steps=step)
@@ -2099,6 +2100,8 @@ class Feature(DimcatResource):
         return self._apply_playthrough(feature_df)
 
 
-FeatureSpecs: TypeAlias = Union[MutableMapping, Feature, FeatureName, str]
+FeatureSpecs: TypeAlias = Union[
+    Feature, Type[Feature], DimcatConfig, MutableMapping, FeatureName, str
+]
 
 # endregion Feature

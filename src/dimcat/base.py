@@ -22,6 +22,7 @@ from typing import (
     Optional,
     Tuple,
     Type,
+    TypeAlias,
     TypeVar,
     Union,
     overload,
@@ -733,10 +734,48 @@ def deserialize_json_file(json_file: Path | str) -> DimcatObject:
 
 
 DO = TypeVar("DO", bound=DimcatObject)
-DimcatObjectSpecs = Union[DO | Type[DO] | DimcatConfig | dict | ObjectEnum | str]
+DimcatObjectSpecs: TypeAlias = Union[
+    DO, Type[DO], DimcatConfig, MutableMapping, ObjectEnum, str
+]
 
 
-def resolve_object_specs(
+def make_config_from_specs(
+    specs: DO,
+    instance_of: Optional[Type[DO] | str] = None,
+) -> DimcatConfig:
+    """Returns a DimcatConfig corresponding to the given specs. If a DimcatConfig with dtype 'DimcatConfig' is received,
+    the described (inner) DimcatConfig is returned.
+
+    Raises:
+        TypeError: If the feature cannot be converted to a dimcat configuration.
+    """
+    if isinstance(specs, DimcatConfig):
+        config = specs
+    elif isinstance(specs, DimcatObject):
+        config = specs.to_config()
+    elif isinstance(specs, type) and issubclass(specs, DimcatObject):
+        config = DimcatConfig(specs.name)
+    elif isinstance(specs, MutableMapping):
+        config = DimcatConfig(specs)
+    elif isinstance(specs, str):
+        config = DimcatConfig(specs)
+    else:
+        raise TypeError(
+            f"Cannot create a DimcatConfig from the {type(specs).__name__} {specs!r}."
+        )
+    if config.options_dtype == "DimcatConfig":
+        config = DimcatConfig(config["options"])
+    config_dtype = config.options_dtype
+    if instance_of is None:
+        return config
+    if is_subclass_of(config_dtype, instance_of):
+        return config
+    raise TypeError(
+        f"DimcatConfig describes a {config_dtype}, not a Feature: " f"{config.options}"
+    )
+
+
+def make_object_from_specs(
     specs: DimcatObjectSpecs,
     instance_of: Optional[Type[DO] | str] = None,
 ) -> DO:
@@ -747,7 +786,7 @@ def resolve_object_specs(
         obj = specs
     elif isinstance(specs, type) and issubclass(specs, DimcatObject):
         obj = specs()
-    elif isinstance(specs, dict):
+    elif isinstance(specs, MutableMapping):
         obj = deserialize_dict(specs)
     elif isinstance(specs, str):
         if isinstance(specs, ObjectEnum):
@@ -756,7 +795,9 @@ def resolve_object_specs(
             Constructor = get_class(specs)
         obj = Constructor()
     else:
-        obj = specs
+        raise TypeError(
+            f"Cannot create a DimcatObject from the {type(specs).__name__} {specs!r}."
+        )
     if instance_of is None:
         return obj
     if isinstance(instance_of, str):
