@@ -1151,7 +1151,7 @@ def _transform_phrase_data(
     phrase_df,
     columns: str | List[str] = "chord",
     components: phraseComponents | List[phraseComponents] = "body",
-    droplevels: bool | int | str | Iterable[int | str] = False,
+    drop_levels: bool | int | str | Iterable[int | str] = False,
     reverse: bool = False,
     level_name: str = "i",
 ):
@@ -1163,7 +1163,7 @@ def _transform_phrase_data(
             Column(s) to include in the result.
         components:
             Which of the four phrase components to include, ∈ {'ante', 'body', 'codetta', 'post'}.
-        droplevels:
+        drop_levels:
             Can be a boolean or any level specifier accepted by :meth:`pandas.MultiIndex.droplevel()`.
             If False (default), all levels are retained. If True, only the phrase_id level and
             the ``level_name`` are retained. In all other cases, the indicated (string or
@@ -1185,14 +1185,14 @@ def _transform_phrase_data(
     if reverse:
         result = result[::-1]
     phrase_ids = result.index.get_level_values("phrase_id")
-    if droplevels is True:
+    if drop_levels is True:
         new_index = make_multiindex_for_unstack(phrase_ids, level_name=level_name)
     else:
         old_index = result.index.droplevel(-1)
-        if not droplevels:
+        if not drop_levels:
             pass
         else:
-            old_index = old_index.droplevel(droplevels)
+            old_index = old_index.droplevel(drop_levels)
         new_level = pd.Series(_make_groupwise_range_index(phrase_ids), name=level_name)
         new_index_df = pd.concat([old_index.to_frame(index=False), new_level], axis=1)
         new_index = pd.MultiIndex.from_frame(new_index_df)
@@ -1589,7 +1589,7 @@ class PhraseAnnotations(DcmlAnnotations):
         reverse: bool = False,
         level_name: str = "i",
         wide_format: bool = False,
-        droplevels: bool | int | str | Iterable[int | str] = False,
+        drop_levels: bool | int | str | Iterable[int | str] = False,
     ) -> PhraseData:
         """
 
@@ -1619,7 +1619,7 @@ class PhraseAnnotations(DcmlAnnotations):
             wide_format:
                 Pass True to unstack the result so that the columns for each phrase are concatenated
                 side by side.
-            droplevels:
+            drop_levels:
                 Can be a boolean or any level specifier accepted by :meth:`pandas.MultiIndex.droplevel()`.
                 If False (default), all levels are retained. If True, only the phrase_id level and
                 the ``level_name`` are retained. In all other cases, the indicated (string or
@@ -1639,7 +1639,7 @@ class PhraseAnnotations(DcmlAnnotations):
             reverse=reverse,
             level_name=level_name,
             format=df_format,
-            droplevels=droplevels,
+            drop_levels=drop_levels,
         )
         return self.apply_step(analyzer)
 

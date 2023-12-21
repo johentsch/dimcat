@@ -29,7 +29,7 @@ class PhraseDataAnalyzer(Analyzer):
         reverse = mm.fields.Bool(metadata=dict(expose=False))
         level_name = mm.fields.Str(metadata=dict(expose=False))
         format = FriendlyEnumField(PhraseDataFormat, metadata=dict(expose=False))
-        droplevels = mm.fields.Raw(metadata=dict(expose=False))
+        drop_levels = mm.fields.Raw(metadata=dict(expose=False))
 
     def __init__(
         self,
@@ -40,7 +40,7 @@ class PhraseDataAnalyzer(Analyzer):
         reverse: bool = False,
         level_name: str = "i",
         format: PhraseDataFormat = PhraseDataFormat.LONG,
-        droplevels: bool | int | str | Iterable[int | str] = False,
+        drop_levels: bool | int | str | Iterable[int | str] = False,
         strategy: DispatchStrategy = DispatchStrategy.GROUPBY_APPLY,
         smallest_unit: UnitOfAnalysis = UnitOfAnalysis.SLICE,
         dimension_column: str = None,
@@ -74,7 +74,7 @@ class PhraseDataAnalyzer(Analyzer):
                 This level replaces the original 'i' level which allows for tracing back each chord, because it allows
                 for displaying the phrases in WIDE format.
             format: Can be LONG (default) or WIDE.
-            droplevels:
+            drop_levels:
                 Can be a boolean or any level specifier accepted by :meth:`pandas.MultiIndex.droplevel()`.
                 If False (default), all levels are retained. If True, only the phrase_id level and
                 the ``level_name`` are retained. In all other cases, the indicated (string or
@@ -100,9 +100,9 @@ class PhraseDataAnalyzer(Analyzer):
         )
         self._columns = None
         self._components = None
-        self._droplevels = None
+        self._drop_levels = None
         self._format = None
-        self.droplevels: bool | int | str | Iterable[int | str] = droplevels
+        self.drop_levels: bool | int | str | Iterable[int | str] = drop_levels
         self.query: str = query
         self.reverse: bool = reverse
         self.level_name: str = level_name
