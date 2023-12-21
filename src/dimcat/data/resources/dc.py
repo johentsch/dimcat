@@ -183,6 +183,7 @@ class DimcatResource(Resource, Generic[D]):
         basepath: Optional[str] = None,
         auto_validate: bool = False,
         default_groupby: Optional[str | list[str]] = None,
+        format=None,
         **kwargs,
     ) -> Self:
         """Create a DimcatResource by loading its frictionless descriptor from disk.
@@ -202,6 +203,7 @@ class DimcatResource(Resource, Generic[D]):
                 e.g. replacing the :attr:`column_schema`.
             default_groupby:
                 Pass a list of column names or index levels to groupby something else than the default (by piece).
+            format: Defines the :attr:`format`.
         """
         return super().from_descriptor(
             descriptor=descriptor,
@@ -209,6 +211,7 @@ class DimcatResource(Resource, Generic[D]):
             basepath=basepath,
             auto_validate=auto_validate,
             default_groupby=default_groupby,
+            format=format,
             **kwargs,
         )
 
@@ -218,6 +221,7 @@ class DimcatResource(Resource, Generic[D]):
         descriptor_path: str,
         auto_validate: bool = False,
         default_groupby: Optional[str | list[str]] = None,
+        format=None,
         **kwargs,
     ) -> Self:
         """Create a Resource from a frictionless descriptor file on disk.
@@ -230,12 +234,14 @@ class DimcatResource(Resource, Generic[D]):
                 e.g. replacing the :attr:`column_schema`.
             default_groupby:
                 Pass a list of column names or index levels to groupby something else than the default (by piece).
+            format: Defines the :attr:`format`.
 
         """
         return super().from_descriptor_path(
             descriptor_path=descriptor_path,
             auto_validate=auto_validate,
             default_groupby=default_groupby,
+            format=format,
             **kwargs,
         )
 
@@ -248,6 +254,7 @@ class DimcatResource(Resource, Generic[D]):
         basepath: Optional[str] = None,
         auto_validate: bool = False,
         default_groupby: Optional[str | list[str]] = None,
+        format=None,
         **kwargs,
     ) -> Self:
         """Create a DimcatResource from a dataframe, specifying its name and, optionally, at what path it is to be
@@ -267,12 +274,14 @@ class DimcatResource(Resource, Generic[D]):
                 e.g. replacing the :attr:`column_schema`.
             default_groupby:
                 Pass a list of column names or index levels to groupby something else than the default (by piece).
+            format: Defines the :attr:`format`.
         """
         new_object = cls(
             basepath=basepath,
             descriptor_filename=descriptor_filename,
             auto_validate=auto_validate,
             default_groupby=default_groupby,
+            format=format,
             **kwargs,
         )
         if resource_name is not None:
@@ -286,9 +295,10 @@ class DimcatResource(Resource, Generic[D]):
         filepath: str,
         resource_name: Optional[str] = None,
         descriptor_filename: Optional[str] = None,
+        basepath: Optional[str] = None,
         auto_validate: bool = False,
         default_groupby: Optional[str | list[str]] = None,
-        basepath: Optional[str] = None,
+        format=None,
         **kwargs: Optional[bool],
     ) -> Self:
         """Create a Resource from a file on disk, be it a JSON/YAML resource descriptor, or a simple path resource.
@@ -302,22 +312,24 @@ class DimcatResource(Resource, Generic[D]):
                 Relative filepath for using a different JSON/YAML descriptor filename than the default
                 :func:`get_descriptor_filename`. Needs to end on one of the file extensions defined in the
                 setting ``package_descriptor_endings`` (by default 'resource.json' or 'resource.yaml').
+            basepath:
+                Basepath to use for the resource. If None, the folder of the ``filepath`` is used.
             auto_validate:
                 By default, the Resource will not be validated upon instantiation or change (but always before
                 writing to disk). Set True to raise an exception during creation or modification of the resource,
                 e.g. replacing the :attr:`column_schema`.
             default_groupby:
                 Pass a list of column names or index levels to groupby something else than the default (by piece).
-            basepath:
-                Basepath to use for the resource. If None, the folder of the ``filepath`` is used.
+            format: Defines the :attr:`format`.
         """
         return super().from_filepath(
             filepath=filepath,
             resource_name=resource_name,
             descriptor_filename=descriptor_filename,
+            basepath=basepath,
             auto_validate=auto_validate,
             default_groupby=default_groupby,
-            basepath=basepath,
+            format=format,
             **kwargs,
         )
 
@@ -330,6 +342,7 @@ class DimcatResource(Resource, Generic[D]):
         descriptor_filename: Optional[str] = None,
         auto_validate: bool = False,
         default_groupby: Optional[str | list[str]] = None,
+        format=None,
     ) -> Self:
         if isinstance(index, DimcatIndex):
             index = index.index
@@ -341,6 +354,7 @@ class DimcatResource(Resource, Generic[D]):
             auto_validate=auto_validate,
             default_groupby=default_groupby,
             basepath=basepath,
+            format=format,
         )
 
     @classmethod
@@ -352,6 +366,7 @@ class DimcatResource(Resource, Generic[D]):
         basepath: Optional[str] = None,
         auto_validate: Optional[bool] = None,
         default_groupby: Optional[str | list[str]] = None,
+        format=None,
         **kwargs,
     ) -> Self:
         """Create a DimcatResource from an existing :obj:`Resource`, specifying its name and,
@@ -371,6 +386,7 @@ class DimcatResource(Resource, Generic[D]):
                 e.g. replacing the :attr:`column_schema`.
             default_groupby:
                 Pass a list of column names or index levels to groupby something else than the default (by piece).
+            format: Defines the :attr:`format`.
         """
         if not isinstance(resource, Resource):
             raise TypeError(f"Expected a Resource, got {type(resource)!r}.")
@@ -381,6 +397,7 @@ class DimcatResource(Resource, Generic[D]):
             basepath=basepath,
             auto_validate=auto_validate,
             default_groupby=default_groupby,
+            format=format,
             **kwargs,
         )
         # copy additional fields
@@ -402,6 +419,7 @@ class DimcatResource(Resource, Generic[D]):
         basepath: Optional[str] = None,
         auto_validate: Optional[bool] = None,
         default_groupby: Optional[str | list[str]] = None,
+        format=None,
         **kwargs,
     ) -> Self:
         """Create a DimcatResource from an existing :obj:`Resource`, specifying its name and,
@@ -421,6 +439,7 @@ class DimcatResource(Resource, Generic[D]):
                 e.g. replacing the :attr:`column_schema`.
             default_groupby:
                 Pass a list of column names or index levels to groupby something else than the default (by piece).
+            format: Defines the :attr:`format`.
         """
         if not isinstance(resource, Resource):
             raise TypeError(f"Expected a Resource, got {type(resource)!r}.")
@@ -431,6 +450,7 @@ class DimcatResource(Resource, Generic[D]):
             basepath=basepath,
             auto_validate=auto_validate,
             default_groupby=default_groupby,
+            format=format,
             **kwargs,
         )
         if not descriptor_filename and new_object.descriptor_exists:

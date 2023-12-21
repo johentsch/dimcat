@@ -722,6 +722,7 @@ class BassNotes(HarmonyLabels):
         auto_validate: bool = True,
         default_groupby: Optional[str | list[str]] = None,
         format: NotesFormat = BassNotesFormat.INTERVAL,
+        playthrough: Playthrough = Playthrough.SINGLE,
     ) -> None:
         super().__init__(
             resource=resource,
@@ -730,6 +731,7 @@ class BassNotes(HarmonyLabels):
             auto_validate=auto_validate,
             default_groupby=default_groupby,
             format=format,
+            playthrough=playthrough,
         )
 
     @property
@@ -1516,8 +1518,20 @@ class PhraseAnnotations(DcmlAnnotations):
     _default_value_column = "duration_qb"
 
     class Schema(DcmlAnnotations.Schema):
-        n_ante = mm.fields.Int()
-        n_post = mm.fields.Int()
+        n_ante = mm.fields.Int(
+            metadata=dict(
+                expose=True,
+                description="Specify an integer > 0 in order to include additional information on the n labels "
+                "preceding the phrase. These are generally part of a previous phrase.",
+            )
+        )
+        n_post = mm.fields.Int(
+            metadata=dict(
+                expose=True,
+                description="Specify an integer > 0 in order to include additional information on the n labels "
+                "following the phrase. These are generally part of a subsequent phrase.",
+            )
+        )
 
     def __init__(
         self,
@@ -1535,12 +1549,12 @@ class PhraseAnnotations(DcmlAnnotations):
 
         Args:
             n_ante:
-                By default, each phrase includes information about the included labels from beginning to end. Specify a
-                larger integer in order to include additional information on the n labels preceding the phrase. These
+                By default, each phrase includes information about the included labels from beginning to end. Specify an
+                integer > 0 in order to include additional information on the n labels preceding the phrase. These
                 are generally part of a previous phrase.
             n_post:
-                By default, each phrase includes information about the included labels from beginning to end. Specify a
-                larger integer in order to include additional information on the n labels following the phrase. These
+                By default, each phrase includes information about the included labels from beginning to end. Specify an
+                integer > 0 in order to include additional information on the n labels following the phrase. These
                 are generally part of a subsequent phrase.
             format: Not in use.
             resource: An existing :obj:`frictionless.Resource`.

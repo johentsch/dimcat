@@ -208,3 +208,17 @@ class BigramAnalyzer(NgramAnalyzer):
     def resource_name_factory(self, resource: DimcatResource) -> str:
         """Returns a name for the resource based on its name and the name of the pipeline step."""
         return f"{resource.resource_name}.bigram_table"
+
+    @property
+    def n(self) -> int:
+        return self._n
+
+    @n.setter
+    def n(self, n: int):
+        if not isinstance(n, int):
+            raise TypeError(f"n must be an integer, not {type(n)}")
+        if n < 2:
+            raise ValueError(f"n must be at least 2, not {n}")
+        if n > 2:
+            self.logger.debug(f"BigramAnalyzer with n=={n}? You do you.")
+        self._n = n
