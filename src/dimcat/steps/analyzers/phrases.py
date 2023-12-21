@@ -1,14 +1,105 @@
+from __future__ import annotations
+
 from typing import Iterable, List, Optional
 
 import marshmallow as mm
+import numpy as np
+import pandas as pd
 from dimcat.base import FriendlyEnumField, ListOfStringsField
 from dimcat.data.resources import Feature, FeatureName
 from dimcat.data.resources.base import DR, SomeSeries
 from dimcat.data.resources.dc import FeatureSpecs, UnitOfAnalysis
-from dimcat.data.resources.features import _transform_phrase_data, phraseComponents
+from dimcat.data.resources.features import phraseComponents
 from dimcat.data.resources.results import PhraseData, PhraseDataFormat
 from dimcat.data.resources.utils import make_boolean_mask_from_set_of_tuples
 from dimcat.steps.analyzers.base import Analyzer, DispatchStrategy
+from numpy import typing as npt
+
+# region helpers
+
+
+def _make_groupwise_range_index(idx: pd.Index) -> npt.NDArray:
+    """Turns adjacency groups into integer ranges starting from 0.
+
+    The algorithm builds on Warren Weckesser's approach via https://stackoverflow.com/a/20033438
+    """
+    arr = idx.to_numpy()
+    start_mask = arr != np.roll(arr, 1)
+    (start_index,) = np.where(start_mask)
+    group_lengths = start_index[1:] - start_index[:-1]
+    incr = np.asarray(~start_mask, int)
+    incr[start_index[1:]] = 1 - group_lengths
+    incr.cumsum(out=incr)
+    return incr
+
+
+def make_multiindex_for_unstack(idx: pd.Index, level_name: str = "i") -> pd.MultiIndex:
+    """Turns an index that contains adjacency groups (adjacent entries having the same value) into
+    a 2-level MultiIndex where the new level represents an individual integer range for each group,
+    starting at 0.
+    """
+    old_level_name = idx.name
+    groupwise_ranges = _make_groupwise_range_index(idx)
+    result = pd.MultiIndex.from_arrays(
+        [idx, groupwise_ranges], names=[old_level_name, level_name]
+    )
+    return result
+
+
+def _transform_phrase_data(
+    phrase_df,
+    columns: str | List[str] = "chord",
+    components: phraseComponents | List[phraseComponents] = "body",
+    drop_levels: bool | int | str | Iterable[int | str] = False,
+    reverse: bool = False,
+    level_name: str = "i",
+):
+    """Returns a dataframe containing the requested phrase components and harmony columns.
+
+    Args:
+        phrase_df: PhraseAnnotations dataframe.
+        columns:
+            Column(s) to include in the result.
+        components:
+            Which of the four phrase components to include, ∈ {'ante', 'body', 'codetta', 'post'}.
+        drop_levels:
+            Can be a boolean or any level specifier accepted by :meth:`pandas.MultiIndex.droplevel()`.
+            If False (default), all levels are retained. If True, only the phrase_id level and
+            the ``level_name`` are retained. In all other cases, the indicated (string or
+            integer) value(s) must be valid and cause one of the index levels to be dropped.
+            ``level_name`` cannot be dropped. Dropping 'phrase_id' will likely lead to an
+            exception if a :class:`PhraseData` object will be displayed in WIDE format.
+        reverse:
+            Pass True to reverse the order of harmonies so that each phrase's last label comes
+            first.
+        level_name:
+            Defaults to 'i', which is the name of the original level that will be replaced
+            by this new one. The new one represents the individual integer range for each
+            phrase, starting at 0.
+
+    Returns:
+        Dataframe representing partial information on the selected phrases.
+    """
+    result = phrase_df.loc[pd.IndexSlice[:, :, :, components], columns].copy()
+    if reverse:
+        result = result[::-1]
+    phrase_ids = result.index.get_level_values("phrase_id")
+    if drop_levels is True:
+        new_index = make_multiindex_for_unstack(phrase_ids, level_name=level_name)
+    else:
+        old_index = result.index.droplevel(-1)
+        if not drop_levels:
+            pass
+        else:
+            old_index = old_index.droplevel(drop_levels)
+        new_level = pd.Series(_make_groupwise_range_index(phrase_ids), name=level_name)
+        new_index_df = pd.concat([old_index.to_frame(index=False), new_level], axis=1)
+        new_index = pd.MultiIndex.from_frame(new_index_df)
+    result.index = new_index
+    return result
+
+
+# endregion helpers
 
 
 class PhraseDataAnalyzer(Analyzer):
@@ -165,6 +256,7 @@ class PhraseDataAnalyzer(Analyzer):
             phrase_df=phrase_df,
             columns=self.columns,
             components=self.components,
+            drop_levels=self.drop_levels,
             reverse=self.reverse,
             level_name=self.level_name,
         )
