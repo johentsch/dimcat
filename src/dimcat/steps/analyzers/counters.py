@@ -5,7 +5,7 @@ import marshmallow as mm
 import pandas as pd
 from dimcat.base import FriendlyEnum, FriendlyEnumField
 from dimcat.data.resources import Feature
-from dimcat.data.resources.base import D, SomeDataframe, SomeSeries
+from dimcat.data.resources.base import DR, D, SomeDataframe, SomeSeries
 from dimcat.data.resources.dc import DimcatResource, FeatureSpecs, UnitOfAnalysis
 from dimcat.data.resources.results import CadenceCounts, Counts, NgramTable
 from dimcat.steps.analyzers.base import Analyzer, DispatchStrategy
@@ -56,7 +56,7 @@ class Counter(Analyzer):
 
         return result
 
-    def resource_name_factory(self, resource: DimcatResource) -> str:
+    def resource_name_factory(self, resource: DR) -> str:
         """Returns a name for the resource based on its name and the name of the pipeline step."""
         return f"{resource.resource_name}.counted"
 
@@ -105,13 +105,36 @@ class NgramAnalyzer(Analyzer):
 
     def __init__(
         self,
+        features: Optional[FeatureSpecs | Iterable[FeatureSpecs]] = None,
         n: int = 2,
         format: NgramTableFormat = NgramTableFormat.CONVENIENCE,
-        features: Optional[FeatureSpecs | Iterable[FeatureSpecs]] = None,
         strategy: DispatchStrategy = DispatchStrategy.GROUPBY_APPLY,
         smallest_unit: UnitOfAnalysis = UnitOfAnalysis.SLICE,
         dimension_column: str = None,
     ):
+        """
+
+        Args:
+            features:
+                The Feature objects you want this Analyzer to process. If not specified, it will try to process all
+                features present in a given Dataset's Outputs catalog.
+            n:
+                Specify the n-1 number of subsequent elements you want the table to contain for each element.
+                n = 2 (the default) corresponds to bigrams, 3 to trigrams, etc.
+            format:
+                Controls the amount of columns you want to include for the n-1 consequents from the bare minimum
+                (FEATURES) to the full duplication including context columns (FULL).
+            strategy: Currently, only the default strategy GROUPBY_APPLY is implemented.
+            smallest_unit:
+                The smallest unit to consider for analysis. Defaults to SLICE, meaning that slice segments are analyzed
+                if a slicer has been previously applied, piece units otherwise. The results for larger units can always
+                be retrospectively retrieved by using :meth:`Result.combine_results()`, but not the other way around.
+                Use this setting to reduce compute time by setting it to PIECE, CORPUS_GROUP, or GROUP where the latter
+                uses the default groupby if a grouper has been previously applied, or the entire dataset, otherwise.
+            dimension_column:
+                Name of the column containing some dimension, e.g. to be interpreted as quantity (durations, counts,
+                etc.) or as color.
+        """
         super().__init__(
             features=features,
             strategy=strategy,
@@ -199,13 +222,13 @@ class NgramAnalyzer(Analyzer):
         )
         return result
 
-    def resource_name_factory(self, resource: DimcatResource) -> str:
+    def resource_name_factory(self, resource: DR) -> str:
         """Returns a name for the resource based on its name and the name of the pipeline step."""
         return f"{resource.resource_name}.ngram_table"
 
 
 class BigramAnalyzer(NgramAnalyzer):
-    def resource_name_factory(self, resource: DimcatResource) -> str:
+    def resource_name_factory(self, resource: DR) -> str:
         """Returns a name for the resource based on its name and the name of the pipeline step."""
         return f"{resource.resource_name}.bigram_table"
 

@@ -57,7 +57,6 @@ from dimcat.dc_exceptions import (
     ResourceNotProcessableError,
 )
 from dimcat.dc_warnings import OrderOfPipelineStepsWarning
-from marshmallow import fields, pre_load
 
 module_logger = logging.getLogger(__name__)
 
@@ -271,7 +270,7 @@ class PipelineStep(DimcatObject):
         self.check_resource(resource)
         return self._process_resource(resource)
 
-    def resource_name_factory(self, resource: DimcatResource) -> str:
+    def resource_name_factory(self, resource: DR) -> str:
         """Creates a unique name for the new resource based on the input resource."""
         return resource.resource_name
 
@@ -295,8 +294,8 @@ class FeatureProcessingStep(PipelineStep):
     """If set to True, this PipelineStep cannot be initialized without specifying at least one feature."""
 
     class Schema(PipelineStep.Schema):
-        features = fields.List(
-            fields.Nested(DimcatConfig.Schema),
+        features = mm.fields.List(
+            mm.fields.Nested(DimcatConfig.Schema),
             allow_none=True,
             metadata=dict(
                 expose=True,
@@ -305,7 +304,7 @@ class FeatureProcessingStep(PipelineStep):
             ),
         )
 
-        @pre_load
+        @mm.pre_load
         def deal_with_single_item(self, data, **kwargs):
             if isinstance(data, MutableMapping) and "features" in data:
                 if isinstance(data["features"], list):

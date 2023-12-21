@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import typing
 from abc import ABC
 from configparser import ConfigParser
 from dataclasses import dataclass
@@ -365,6 +366,11 @@ class DimcatObjectField(mm.fields.Field):
 
 
 class FriendlyEnumField(mm.fields.Enum):
+    """This fields is identical with the standard :class:`Marshmallow Enum field <marshmallow.fields.Enum>` except
+    for the fact that enum members are created based on enum values instead of enum names. This incorporates the
+    benefits of the :class:`FriendlyEnum`, i.e. case-insensitive creation from partial strings.
+    """
+
     def __init__(
         self,
         enum: type[Enum],
@@ -373,6 +379,16 @@ class FriendlyEnumField(mm.fields.Enum):
         **kwargs,
     ):
         super().__init__(enum=enum, by_value=by_value, **kwargs)
+
+
+class ListOfStringsField(mm.fields.List):
+    def __init__(self, cls_or_instance=mm.fields.Str(), **kwargs):
+        super().__init__(cls_or_instance=cls_or_instance, **kwargs)
+
+    def _deserialize(self, value, attr, data, **kwargs) -> list[typing.Any]:
+        if isinstance(value, str):
+            value = [value]
+        return super()._deserialize(value=value, attr=attr, data=data, **kwargs)
 
 
 # endregion DimcatObject

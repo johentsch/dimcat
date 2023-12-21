@@ -11,7 +11,6 @@ from typing import (
     List,
     Literal,
     Optional,
-    Sequence,
     Tuple,
     TypeAlias,
 )
@@ -39,7 +38,6 @@ from dimcat.data.resources.utils import (
     get_corpus_display_name,
     join_df_on_index,
     make_adjacency_groups,
-    make_boolean_mask_from_set_of_tuples,
     merge_ties,
 )
 from dimcat.dc_exceptions import (
@@ -50,7 +48,7 @@ from dimcat.dc_exceptions import (
 from dimcat.utils import get_middle_composition_year
 
 module_logger = logging.getLogger(__name__)
-phraseComp: TypeAlias = Literal["ante", "body", "codetta", "post"]
+phraseComponents: TypeAlias = Literal["ante", "body", "codetta", "post"]
 
 
 class Metadata(Feature):
@@ -1136,9 +1134,7 @@ def _make_groupwise_range_index(idx: pd.Index) -> npt.NDArray:
     return incr
 
 
-def make_multiindex_for_unstack(
-    idx: pd.Index, new_level_name: str = "i"
-) -> pd.MultiIndex:
+def make_multiindex_for_unstack(idx: pd.Index, level_name: str = "i") -> pd.MultiIndex:
     """Turns an index that contains adjacency groups (adjacent entries having the same value) into
     a 2-level MultiIndex where the new level represents an individual integer range for each group,
     starting at 0.
@@ -1146,7 +1142,7 @@ def make_multiindex_for_unstack(
     old_level_name = idx.name
     groupwise_ranges = _make_groupwise_range_index(idx)
     result = pd.MultiIndex.from_arrays(
-        [idx, groupwise_ranges], names=[old_level_name, new_level_name]
+        [idx, groupwise_ranges], names=[old_level_name, level_name]
     )
     return result
 
@@ -1154,10 +1150,10 @@ def make_multiindex_for_unstack(
 def _transform_phrase_data(
     phrase_df,
     columns: str | List[str] = "chord",
-    components: phraseComp | List[phraseComp] = "body",
-    droplevels: bool | Hashable | Sequence[Hashable] = False,
+    components: phraseComponents | List[phraseComponents] = "body",
+    droplevels: bool | int | str | Iterable[int | str] = False,
     reverse: bool = False,
-    new_level_name: str = "i",
+    level_name: str = "i",
 ):
     """Returns a dataframe containing the requested phrase components and harmony columns.
 
@@ -1170,14 +1166,14 @@ def _transform_phrase_data(
         droplevels:
             Can be a boolean or any level specifier accepted by :meth:`pandas.MultiIndex.droplevel()`.
             If False (default), all levels are retained. If True, only the phrase_id level and
-            the ``new_level_name`` are retained. In all other cases, the indicated (string or
+            the ``level_name`` are retained. In all other cases, the indicated (string or
             integer) value(s) must be valid and cause one of the index levels to be dropped.
-            ``new_level_name`` cannot be dropped. Dropping 'phrase_id' will likely lead to an
+            ``level_name`` cannot be dropped. Dropping 'phrase_id' will likely lead to an
             exception if a :class:`PhraseData` object will be displayed in WIDE format.
         reverse:
             Pass True to reverse the order of harmonies so that each phrase's last label comes
             first.
-        new_level_name:
+        level_name:
             Defaults to 'i', which is the name of the original level that will be replaced
             by this new one. The new one represents the individual integer range for each
             phrase, starting at 0.
@@ -1190,18 +1186,14 @@ def _transform_phrase_data(
         result = result[::-1]
     phrase_ids = result.index.get_level_values("phrase_id")
     if droplevels is True:
-        new_index = make_multiindex_for_unstack(
-            phrase_ids, new_level_name=new_level_name
-        )
+        new_index = make_multiindex_for_unstack(phrase_ids, level_name=level_name)
     else:
         old_index = result.index.droplevel(-1)
         if not droplevels:
             pass
         else:
             old_index = old_index.droplevel(droplevels)
-        new_level = pd.Series(
-            _make_groupwise_range_index(phrase_ids), name=new_level_name
-        )
+        new_level = pd.Series(_make_groupwise_range_index(phrase_ids), name=level_name)
         new_index_df = pd.concat([old_index.to_frame(index=False), new_level], axis=1)
         new_index = pd.MultiIndex.from_frame(new_index_df)
     result.index = new_index
@@ -1589,44 +1581,25 @@ class PhraseAnnotations(DcmlAnnotations):
         """Alias for :meth:`df`."""
         return self.df
 
-    def filter_phrase_data(
+    def get_phrase_data(
         self,
         columns: str | List[str] = "label",
-        components: phraseComp | List[phraseComp] = "body",
-        droplevels: bool = False,
-        reverse: bool = False,
-        new_level_name: str = "i",
-        wide_format: bool = False,
+        components: phraseComponents | List[phraseComponents] = "body",
         query: Optional[str] = None,
-    ) -> D:
+        reverse: bool = False,
+        level_name: str = "i",
+        wide_format: bool = False,
+        droplevels: bool | int | str | Iterable[int | str] = False,
+    ) -> PhraseData:
         """
 
         Args:
             columns:
-                Column(s) to include in the result. Passing a list results in an additional index
-                level called "column".
+                Column(s) to include in the result.
             components:
                 Which of the four phrase components to include, ∈ {'ante', 'body', 'codetta', 'post'}.
-            droplevels:
-                Can be a boolean or any level specifier accepted by :meth:`pandas.MultiIndex.droplevel()`.
-                If False (default), all levels are retained. If True, only the phrase_id level and
-                the ``new_level_name`` are retained. In all other cases, the indicated (string or
-                integer) value(s) must be valid and cause one of the index (or column if
-                ``wide_format``) levelse to be dropped. ``new_level_name`` cannot be dropped. If
-                ``wide_format`` is True, dropping 'phrase_id' will likely lead to an exception
-                regarding duplicate index values.
-            reverse:
-                Pass True to reverse the order of harmonies so that each phrase's last label comes
-                first.
-            new_level_name:
-                Defaults to 'i', which is the the name of the original level that will be replaced
-                by this new one. The new one represents the individual integer range for each
-                phrase, starting at 0.
-            wide_format:
-                Pass True to unstack the result so that the columns for each phrase are concatenated
-                side by side.
             query:
-                A convient way to include only those phrases in the result that match the criteria
+                A convenient way to include only those phrases in the result that match the criteria
                 formulated in the string query. A query is a string and generally takes the form
                 "<column_name> <operator> <value>". Several criteria can be combined using boolean
                 operators, e.g. "localkey_mode == 'major' & label.str.contains('/')". This option
@@ -1636,51 +1609,39 @@ class PhraseAnnotations(DcmlAnnotations):
                 containing tuples, you can used a special function to filter those rows that
                 contain any of the specified values:
                 "@tuple_contains(body_chords, 'V(94)', 'V(9)', 'V(4)')".
+            reverse:
+                Pass True to reverse the order of harmonies so that each phrase's last label comes
+                first.
+            level_name:
+                Defaults to 'i', which is the name of the original level that will be replaced
+                by this new one. The new one represents the individual integer range for each
+                phrase, starting at 0.
+            wide_format:
+                Pass True to unstack the result so that the columns for each phrase are concatenated
+                side by side.
+            droplevels:
+                Can be a boolean or any level specifier accepted by :meth:`pandas.MultiIndex.droplevel()`.
+                If False (default), all levels are retained. If True, only the phrase_id level and
+                the ``level_name`` are retained. In all other cases, the indicated (string or
+                integer) value(s) must be valid and cause one of the index levels to be dropped.
+                ``level_name`` cannot be dropped. Dropping 'phrase_id' will likely lead to an
+                exception if a :class:`PhraseData` object will be displayed in WIDE format.
 
         Returns:
             Dataframe representing partial information on the selected phrases in long or wide format.
         """
-        phrase_df = self.phrase_df
-        if query:
-            if self.name == "PhraseAnnotations":
-                phrase_df = phrase_df.query(query)
-            else:
-                # for PhraseComponents and PhraseLabels, the filtering is performed on their respective feature df,
-                # then the phrase_df (which corresponds to a PhraseAnnotations dataframe) is filtered based on the
-                # result
-                filtered_df = self.df.query(query)
-                idx = filtered_df.index
-                mask = make_boolean_mask_from_set_of_tuples(
-                    phrase_df.index, set(idx), idx.names
-                )
-                phrase_df = phrase_df[mask]
-        phrase_data = _transform_phrase_data(
-            phrase_df=phrase_df,
+        df_format = PhraseDataFormat.WIDE if wide_format else PhraseDataFormat.LONG
+        analyzer = dict(
+            dtype="PhraseDataAnalyzer",
             columns=columns,
             components=components,
-            droplevels=droplevels,
+            query=query,
             reverse=reverse,
-            new_level_name=new_level_name,
-        )
-        if isinstance(columns, str):
-            value_column = columns
-            formatted_column = None
-        else:
-            value_column = columns[0]
-            formatted_column = columns[1:]
-        result_name = self.resource_name + ".phrase_data"
-        default_groupby = self.default_groupby + ["phrase_id"]
-        df_format = PhraseDataFormat.WIDE if wide_format else PhraseDataFormat.LONG
-        return PhraseData.from_dataframe(
-            analyzed_resource=self,
-            value_column=value_column,
-            dimension_column="duration_qb",
-            formatted_column=formatted_column,
-            df=phrase_data,
-            resource_name=result_name,
-            default_groupby=default_groupby,
+            level_name=level_name,
             format=df_format,
+            droplevels=droplevels,
         )
+        return self.apply_step(analyzer)
 
     def _transform_dataframe(self, feature_df: D) -> D:
         """Called by :meth:`_set_dataframe` to transform the dataframe before incorporating it.
