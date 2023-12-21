@@ -229,15 +229,18 @@ class Analyzer(FeatureProcessingStep):
             formatted_column = resource.formatted_column
         else:
             formatted_column = None
-        result = result_constructor.from_dataframe(
-            analyzed_resource=resource,
-            value_column=value_column,
-            dimension_column=self.dimension_column,
-            formatted_column=formatted_column,
-            df=results,
-            resource_name=result_name,
-            default_groupby=resource.default_groupby,
+        result_init_args = self.to_config().init_args
+        result_init_args.update(
+            dict(
+                analyzed_resource=resource,
+                value_column=value_column,
+                formatted_column=formatted_column,
+                df=results,
+                resource_name=result_name,
+                default_groupby=resource.default_groupby,
+            )
         )
+        result = result_constructor.from_dataframe(**result_init_args)
         return result
 
     def groupby_apply(self, feature: Feature, groupby: SomeSeries = None, **kwargs):

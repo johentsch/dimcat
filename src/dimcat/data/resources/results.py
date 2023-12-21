@@ -4,6 +4,7 @@ import logging
 import math
 from functools import cache, cached_property, partial
 from itertools import product, repeat
+from pprint import pformat
 from typing import (
     Any,
     Callable,
@@ -273,13 +274,12 @@ class Result(DimcatResource):
             default_groupby:
             format:
             **kwargs:
-                Since Results are often initialized from a Feature resource, this catches any init arguments for the
-                feature and puts them in a debug log message.
+                Since :class:`Analyzers <Analyzer>` pass on all init arguments to the Results they create, they need
+                to be caught in case the Result does not use them.They are put in a debug-level log message.
         """
         if len(kwargs) > 0:
             self.logger.debug(
-                f"{self.name} was initialized with unused init arguments which probably come from the "
-                f"analyzed {analyzed_resource.name}\n{kwargs}"
+                f"{self.name} was initialized with unused init arguments \n{pformat(kwargs, sort_dicts=False)}"
             )
         super().__init__(
             resource=resource,
