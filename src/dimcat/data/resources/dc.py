@@ -707,7 +707,7 @@ DimcatResource.__init__(
         """Returns the dataframe underlying this resource, applying the current format, if set."""
         resource_df = self.dataframe
         if self.format:
-            return self.format_dataframe(resource_df)
+            return self._format_dataframe(resource_df)
         return resource_df
 
     @df.setter
@@ -987,16 +987,15 @@ DimcatResource.__init__(
     def _format_dataframe(
         self,
         df: D,
-        format,
+        format=None,
     ):
         return df
 
-    def format_dataframe(self, df: Optional[D] = None, format=None):
+    def format_dataframe(self, format=None):
         """Format the resource dataframe or the one specified by the current format or the one specified. This method
         is called by the :attr:`df` property, but not by the :attr:`dataframe` property.
         """
-        if df is None:
-            df = self.dataframe
+        df = self.dataframe
         if format is None:
             format = self.format
         self.logger.debug(f"Formatting dataframe using {format}.")

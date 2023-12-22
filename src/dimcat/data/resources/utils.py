@@ -1275,7 +1275,7 @@ def append_index_levels(
     return new_index
 
 
-def make_groupwise_range_index_from_groups(idx: pd.Index) -> npt.NDArray:
+def make_groupwise_range_index_from_groups(idx: pd.Index) -> npt.NDArray[int]:
     """Turns adjacency groups into integer ranges starting from 0."""
     arr = idx.to_numpy()
     start_mask = arr != np.roll(
@@ -1290,7 +1290,8 @@ def make_range_index_from_boolean_mask(
 ) -> npt.NDArray[int]:
     """Creates an index with the same length as the given boolean mask, that restarts counting from every True entry.
     The behaviour changes depending on whether outer_start_mask is given or not. That's how the function is used
-    by :meth:`PhraseData._regroup_phrases` to create both the inner and the outer index level.
+    by :meth:`PhraseData._regroup_phrases` to create both the inner and the outer index level. The function is
+    indifferent to the value of the first entry in the mask(s).
 
     The algorithm builds on Warren Weckesser's approach via https://stackoverflow.com/a/20033438
 

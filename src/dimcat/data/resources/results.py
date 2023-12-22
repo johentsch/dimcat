@@ -2275,8 +2275,10 @@ class PhraseData(Result):
     def _format_dataframe(
         self,
         df: D,
-        format: PhraseDataFormat,
+        format: PhraseDataFormat = None,
     ):
+        if format is None:
+            format = self.format
         if format == PhraseDataFormat.LONG:
             return df
         if format == PhraseDataFormat.WIDE:
