@@ -2,18 +2,7 @@ from __future__ import annotations
 
 import itertools
 import logging
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Hashable,
-    Iterable,
-    List,
-    Literal,
-    Optional,
-    Tuple,
-    TypeAlias,
-)
+from typing import Any, Callable, Dict, Hashable, Iterable, List, Optional, Tuple
 
 import frictionless as fl
 import marshmallow as mm
@@ -39,6 +28,7 @@ from dimcat.data.resources.utils import (
     join_df_on_index,
     make_adjacency_groups,
     merge_ties,
+    phraseComponents,
 )
 from dimcat.dc_exceptions import (
     DataframeIsMissingExpectedColumnsError,
@@ -48,7 +38,6 @@ from dimcat.dc_exceptions import (
 from dimcat.utils import get_middle_composition_year
 
 module_logger = logging.getLogger(__name__)
-phraseComponents: TypeAlias = Literal["ante", "body", "codetta", "post"]
 
 
 class Metadata(Feature):
@@ -1394,13 +1383,34 @@ def make_raw_phrase_df(
 def _get_body_end_positions_from_raw_phrases(phrase_df: D) -> List[int]:
     """Returns for each phrase body the index position of the last row."""
     body_end_positions = []
-    for (phrase_id, phrase_component), idx in phrase_df.groupby(
-        ["phrase_id", "phrase_component"]
-    ).indices.items():
-        if phrase_component != "body":
-            continue
-        body_end_positions.append(idx[-1])
+    if "phrase_component" in phrase_df.columns:
+        for (phrase_id, phrase_component), idx in phrase_df.groupby(
+            ["phrase_id", "phrase_component"]
+        ).indices.items():
+            if phrase_component != "body":
+                continue
+            body_end_positions.append(idx[-1])
+    else:
+        for idx in phrase_df.groupby("phrase_id").indices.values():
+            body_end_positions.append(idx[-1])
     return body_end_positions
+
+
+def _get_body_start_positions_from_raw_phrases(phrase_df: D) -> List[int]:
+    """Returns for each phrase body the index position of the first row."""
+    body_start_positions = []
+    phrase_df = phrase_df.reset_index()
+    if "phrase_component" in phrase_df.columns:
+        for (phrase_id, phrase_component), idx in phrase_df.groupby(
+            ["phrase_id", "phrase_component"]
+        ).indices.items():
+            if phrase_component != "body":
+                continue
+            body_start_positions.append(idx[0])
+    else:
+        for phrase_id, idx in phrase_df.groupby("phrase_id").indices.items():
+            body_start_positions.append(idx[0])
+    return body_start_positions
 
 
 def tuple_contains(series_with_tuples: S, *values: Hashable):

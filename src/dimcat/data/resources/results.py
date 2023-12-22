@@ -25,6 +25,7 @@ import frictionless as fl
 import marshmallow as mm
 import ms3
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 from dimcat.base import FriendlyEnum, LowercaseEnum, ObjectEnum, get_setting
 from dimcat.dc_exceptions import UnknownFormat
@@ -49,6 +50,11 @@ from typing_extensions import Self
 
 from .base import D, S
 from .dc import DimcatResource, UnitOfAnalysis
+from .utils import (
+    append_index_levels,
+    make_inner_range_index_from_boolean_mask,
+    make_outer_range_index_from_boolean_masks,
+)
 
 module_logger = logging.getLogger(__name__)
 
@@ -97,7 +103,7 @@ def compute_entropy_of_occurrences(
 
 
 def _entropy(
-    pk: np.typing.ArrayLike, base: float | None = None, axis: int = 0
+    pk: npt.ArrayLike, base: float | None = None, axis: int = 0
 ) -> np.number | np.ndarray:
     """This is a copy of scipy.stats.entropy @ v1.11.4 leaving out the `np.asarray` call causing the problem
     reported under https://github.com/pandas-dev/pandas/issues/56472 Tested for unidimensional input only (had to
@@ -130,9 +136,6 @@ def compute_entropy_of_probabilities(
 
     Args:
         probabilities:
-        normalize:
-            If True (default), the entropy is normalized to the range [0, 1] based on the maximum entropy for the
-            given number of propabilities.
         base: Logarithmic base for computing the entropy.
         skip_check:
             If False (default) the probabilities are asserted to sum to 1. Pass True when you have normalized the
@@ -2183,6 +2186,82 @@ class PhraseData(Result):
     @format.setter
     def format(self, format: PhraseDataFormat):
         self._format = PhraseDataFormat(format)
+
+    def _regroup_phrase_index(
+        self,
+        group_start_mask: npt.NDArray[bool],
+    ):
+        pass
+
+    def _regroup_phrases(
+        self,
+        grouping: S,
+        level_names: Tuple[str, str] = ("stage", "substage"),
+    ) -> D:
+        """Insert a grouping column and replace the last index level with a new primary and secondary index accordingly.
+        The primary level increments at the beginning of each group, the secondary level increments at every row,
+        restarting at the beginning of each group. For example, a grouping ["a", "a", "a", "b", "c", "c"] results
+        in the index [(0, 0), (0, 1), (0, 2), (1, 0), (2, 0), (2, 1)].
+
+
+        Args:
+            grouping:
+                A Series with the same index as the (raw) phrase_df, containing the grouping criterion. Adjacent equal
+                values are grouped together.
+            level_names: Names of the two index levels.
+
+        Returns:
+            A reindexed copy of the phrase data.
+        """
+        phrase_start_mask = self._get_phrase_start_mask()
+        substage_start_mask = (
+            (grouping != grouping.shift()).to_numpy()
+        ) | phrase_start_mask
+        substage_level = make_inner_range_index_from_boolean_mask(substage_start_mask)
+        # make new stage level that restarts at phrase starts and increments at substage starts
+        stage_level = make_outer_range_index_from_boolean_masks(
+            substage_start_mask, phrase_start_mask
+        )
+        # create index levels as dataframe in order to concatenate them to existing levels
+        primary, secondary = level_names
+        new_index = pd.DataFrame({primary: stage_level, secondary: substage_level})
+        result_df = pd.concat([grouping, self.dataframe], axis=1)
+        result_df.index = append_index_levels(
+            result_df.index, new_index, drop_levels=-1
+        )
+        return result_df
+
+    def regroup_phrases(
+        self,
+        grouping: S,
+        level_names: Tuple[str, str] = ("stage", "substage"),
+    ) -> Self:
+        """Insert a grouping column and replace the last index level with a new primary and secondary index accordingly.
+        The primary level increments at the beginning of each group, the secondary level increments at every row,
+        restarting at the beginning of each group. For example, a grouping ["a", "a", "a", "b", "c", "c"] results
+        in the index [(0, 0), (0, 1), (0, 2), (1, 0), (2, 0), (2, 1)].
+
+
+        Args:
+            grouping:
+                A Series with the same index as the (raw) phrase_df, containing the grouping criterion. Adjacent equal
+                values are grouped together.
+            level_names: Names of the two index levels.
+
+        Returns:
+            A reindexed copy of the phrase data.
+        """
+        phrase_data = self._regroup_phrases(grouping=grouping, level_names=level_names)
+        return self.__class__.from_resource_and_dataframe(
+            resource=self,
+            df=phrase_data,
+        )
+
+    def _get_phrase_start_mask(self) -> npt.NDArray[bool]:
+        """Returns a boolean array that is True for each row in which a new phrase starts."""
+        phrase_ids = self.dataframe.index.get_level_values("phrase_id").to_numpy()
+        phrase_start_mask = phrase_ids != np.roll(phrase_ids, 1)
+        return phrase_start_mask
 
     def _combine_results(
         self,
