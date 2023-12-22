@@ -19,6 +19,7 @@ from typing import (
     Optional,
     Set,
     Tuple,
+    TypeAlias,
     TypeVar,
     overload,
 )
@@ -42,9 +43,10 @@ from dimcat.dc_exceptions import (
 from dimcat.dc_warnings import ResourceWithRangeIndexUserWarning
 from marshmallow.fields import Boolean
 from ms3 import reduce_dataframe_duration_to_first_row
+from numpy import typing as npt
 from numpy._typing import NDArray
 
-from .base import D, FeatureName
+from .base import IX, D, FeatureName, S
 
 module_logger = logging.getLogger(__name__)
 
@@ -1249,3 +1251,126 @@ def value2bool(value: str | float | int | bool) -> bool | str | float | int:
         if converted in FALSY_VALUES:
             return False
     return value
+
+
+# region PhraseData helpers
+
+phraseComponents: TypeAlias = Literal["ante", "body", "codetta", "post"]
+
+
+def append_index_levels(
+    old_index: IX,
+    *new_level: S | D,
+    drop_levels: Optional[Literal[False], str | int | Iterable[str | int]] = None,
+) -> IX:
+    """
+    Replace index levels by optionally dropping an arbitrary number and concatenating the new level(s) to the right.
+    """
+    if drop_levels:
+        old_index = old_index.droplevel(drop_levels)
+    new_index_df = pd.concat(
+        [old_index.to_frame(index=False)] + list(new_level), axis=1
+    )
+    new_index = pd.MultiIndex.from_frame(new_index_df)
+    return new_index
+
+
+def make_groupwise_range_index_from_groups(idx: pd.Index) -> npt.NDArray:
+    """Turns adjacency groups into integer ranges starting from 0."""
+    arr = idx.to_numpy()
+    start_mask = arr != np.roll(
+        arr, 1
+    )  # position 0 correct only when last != first (because of how roll works)
+    return make_inner_range_index_from_boolean_mask(start_mask)
+
+
+def make_inner_range_index_from_boolean_mask(start_mask):
+    """Creates an index with the same length as the given boolean mask, that restarts counting from every True entry.
+
+    The algorithm builds on Warren Weckesser's approach via https://stackoverflow.com/a/20033438
+    """
+    (start_index,) = np.where(start_mask)
+    group_lengths = start_index[1:] - start_index[:-1]
+    increments = np.asarray(~start_mask, int)
+    increments[start_index[1:]] = 1 - group_lengths
+    increments.cumsum(out=increments)
+    return increments
+
+
+def make_outer_range_index_from_boolean_masks(inner_start_mask, outer_start_mask):
+    inner_increments = np.asarray(inner_start_mask, int)
+    inner_increments[0] = 0
+    outer_mask_increment_counts = inner_increments.cumsum()[outer_start_mask]
+    outer_increment_reset = (
+        outer_mask_increment_counts[1:] - outer_mask_increment_counts[:-1]
+    )
+    (phrase_start_index,) = np.where(outer_start_mask)
+    inner_increments[phrase_start_index[1:]] = 1 - outer_increment_reset
+    inner_increments.cumsum(out=inner_increments)
+    return inner_increments
+
+
+def make_multiindex_for_unstack(idx: pd.Index, level_name: str = "i") -> pd.MultiIndex:
+    """Turns an index that contains adjacency groups (adjacent entries having the same value) into
+    a 2-level MultiIndex where the new level represents an individual integer range for each group,
+    starting at 0.
+    """
+    old_level_name = idx.name
+    groupwise_ranges = make_groupwise_range_index_from_groups(idx)
+    result = pd.MultiIndex.from_arrays(
+        [idx, groupwise_ranges], names=[old_level_name, level_name]
+    )
+    return result
+
+
+def transform_phrase_data(
+    phrase_df,
+    columns: str | List[str] = "chord",
+    components: phraseComponents | List[phraseComponents] = "body",
+    drop_levels: bool | int | str | Iterable[int | str] = False,
+    reverse: bool = False,
+    level_name: str = "i",
+):
+    """Returns a dataframe containing the requested phrase components and harmony columns.
+
+    Args:
+        phrase_df: PhraseAnnotations dataframe.
+        columns:
+            Column(s) to include in the result.
+        components:
+            Which of the four phrase components to include, ∈ {'ante', 'body', 'codetta', 'post'}.
+        drop_levels:
+            Can be a boolean or any level specifier accepted by :meth:`pandas.MultiIndex.droplevel()`.
+            If False (default), all levels are retained. If True, only the phrase_id level and
+            the ``level_name`` are retained. In all other cases, the indicated (string or
+            integer) value(s) must be valid and cause one of the index levels to be dropped.
+            ``level_name`` cannot be dropped. Dropping 'phrase_id' will likely lead to an
+            exception if a :class:`PhraseData` object will be displayed in WIDE format.
+        reverse:
+            Pass True to reverse the order of harmonies so that each phrase's last label comes
+            first.
+        level_name:
+            Defaults to 'i', which is the name of the original level that will be replaced
+            by this new one. The new one represents the individual integer range for each
+            phrase, starting at 0.
+
+    Returns:
+        Dataframe representing partial information on the selected phrases.
+    """
+    result = phrase_df.loc[pd.IndexSlice[:, :, :, components], columns].copy()
+    if reverse:
+        result = result[::-1]
+    phrase_ids = result.index.get_level_values("phrase_id")
+    if drop_levels is True:
+        new_index = make_multiindex_for_unstack(phrase_ids, level_name=level_name)
+    else:
+        new_level = pd.Series(
+            make_groupwise_range_index_from_groups(phrase_ids), name=level_name
+        )
+        old_index = result.index.droplevel(-1)
+        new_index = append_index_levels(old_index, new_level, drop_levels=drop_levels)
+    result.index = new_index
+    return result
+
+
+# endregion PhraseData helpers
