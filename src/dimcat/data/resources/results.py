@@ -50,11 +50,7 @@ from typing_extensions import Self
 
 from .base import D, S
 from .dc import DimcatResource, UnitOfAnalysis
-from .utils import (
-    append_index_levels,
-    make_inner_range_index_from_boolean_mask,
-    make_outer_range_index_from_boolean_masks,
-)
+from .utils import append_index_levels, make_range_index_from_boolean_mask
 
 module_logger = logging.getLogger(__name__)
 
@@ -2217,9 +2213,9 @@ class PhraseData(Result):
         substage_start_mask = (
             (grouping != grouping.shift()).to_numpy()
         ) | phrase_start_mask
-        substage_level = make_inner_range_index_from_boolean_mask(substage_start_mask)
+        substage_level = make_range_index_from_boolean_mask(substage_start_mask)
         # make new stage level that restarts at phrase starts and increments at substage starts
-        stage_level = make_outer_range_index_from_boolean_masks(
+        stage_level = make_range_index_from_boolean_mask(
             substage_start_mask, phrase_start_mask
         )
         # create index levels as dataframe in order to concatenate them to existing levels

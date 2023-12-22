@@ -1281,33 +1281,56 @@ def make_groupwise_range_index_from_groups(idx: pd.Index) -> npt.NDArray:
     start_mask = arr != np.roll(
         arr, 1
     )  # position 0 correct only when last != first (because of how roll works)
-    return make_inner_range_index_from_boolean_mask(start_mask)
+    return make_range_index_from_boolean_mask(start_mask)
 
 
-def make_inner_range_index_from_boolean_mask(start_mask):
+def make_range_index_from_boolean_mask(
+    inner_start_mask: npt.NDArray[bool],
+    outer_start_mask: Optional[npt.NDArray[bool]] = None,
+) -> npt.NDArray[int]:
     """Creates an index with the same length as the given boolean mask, that restarts counting from every True entry.
+    The behaviour changes depending on whether outer_start_mask is given or not. That's how the function is used
+    by :meth:`PhraseData._regroup_phrases` to create both the inner and the outer index level.
 
     The algorithm builds on Warren Weckesser's approach via https://stackoverflow.com/a/20033438
+
+
+    Args:
+        inner_start_mask:
+        outer_start_mask:
+
+    Returns:
+
     """
-    (start_index,) = np.where(start_mask)
-    group_lengths = start_index[1:] - start_index[:-1]
-    increments = np.asarray(~start_mask, int)
-    increments[start_index[1:]] = 1 - group_lengths
+    if outer_start_mask is None:
+        increments = np.asarray(
+            ~inner_start_mask, int
+        )  # increment for every False (non-start)
+        (reset_index,) = np.where(inner_start_mask)
+    else:
+        increments = np.asarray(
+            inner_start_mask, int
+        )  # increment only for every True (start)
+        (reset_index,) = np.where(outer_start_mask)
+
+    # ensure the same behaviour regardless of the value of the first element
+    increments[0] = 0  # always start counting at 0
+    if reset_index[0] != 0:
+        np.insert(reset_index, 0, 0)
+
+    if outer_start_mask is None:
+        reset_starts_by = (
+            reset_index[1:] - reset_index[:-1]
+        )  # last range value + 1 = distance between starts
+    else:
+        outer_mask_increment_counts = increments.cumsum()[outer_start_mask]
+        reset_starts_by = (
+            outer_mask_increment_counts[1:] - outer_mask_increment_counts[:-1]
+        )  # last range value + 1 = number of inner increments between outer starts
+
+    increments[reset_index[1:]] = 1 - reset_starts_by
     increments.cumsum(out=increments)
     return increments
-
-
-def make_outer_range_index_from_boolean_masks(inner_start_mask, outer_start_mask):
-    inner_increments = np.asarray(inner_start_mask, int)
-    inner_increments[0] = 0
-    outer_mask_increment_counts = inner_increments.cumsum()[outer_start_mask]
-    outer_increment_reset = (
-        outer_mask_increment_counts[1:] - outer_mask_increment_counts[:-1]
-    )
-    (phrase_start_index,) = np.where(outer_start_mask)
-    inner_increments[phrase_start_index[1:]] = 1 - outer_increment_reset
-    inner_increments.cumsum(out=inner_increments)
-    return inner_increments
 
 
 def make_multiindex_for_unstack(idx: pd.Index, level_name: str = "i") -> pd.MultiIndex:
