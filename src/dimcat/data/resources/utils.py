@@ -53,7 +53,7 @@ module_logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from .base import SomeDataframe, SomeIndex
-    from .dc import DimcatIndex, FeatureSpecs
+    from .dc import DimcatIndex, FeatureSpecs, Playthrough
 
 TRUTHY_VALUES = Boolean.truthy
 FALSY_VALUES = Boolean.falsy
@@ -136,6 +136,38 @@ def align_with_grouping(
     if sort_index:
         return result.sort_index()
     return result
+
+
+def apply_playthrough(
+    feature_df: D,
+    playthrough: Playthrough,
+    logger: Optional[logging.Logger] = None,
+) -> D:
+    """Transform a dataframe based on the resource's :attr:`playthrough` setting."""
+    if logger is None:
+        logger = module_logger
+    if playthrough == "RAW" or "volta" not in feature_df.columns:
+        return feature_df
+    if not playthrough == "SINGLE":
+        raise NotImplementedError(f"Unknown Playthrough setting {playthrough!r}.")
+    volta_values = feature_df.volta.unique()
+    if 3 in volta_values:
+        logger.info(
+            "The dataframe has more than two alternative endings. The "
+            "Playthrough.SINGLE setting drops all but the seconda volta."
+        )
+    keep_mask = feature_df.volta.isna() | feature_df.volta.eq(2)
+    if keep_mask.all():
+        logger.info("No alternative endings which would need to be dropped.")
+        return feature_df
+    drop_values = feature_df.loc[~keep_mask, "volta"].value_counts().to_dict()
+    logger.debug(
+        f"Values and occurrences of the dropped alternative endings:\n{drop_values}"
+    )
+    result = feature_df[keep_mask]
+    if "quarterbeats_all_endings" in result.columns:
+        return result.drop(columns="quarterbeats_all_endings")
+    return result.copy()
 
 
 def apply_slice_intervals_to_resource_df(
@@ -337,6 +369,40 @@ def check_configs_against_allowed_configs(
     for configs in configs:
         if not any(configs.matches(allowed) for allowed in allowed_configs):
             raise ResourceNotProcessableError(configs.options_dtype)
+
+
+def drop_rows_with_missing_values(
+    df: D,
+    column_names: List[str],
+    how: Literal["any", "all"] = "any",
+    logger: Optional[logging.Logger] = None,
+) -> D:
+    """Drop rows with missing values in the specified columns. If nothing is to be dropped, the identical
+    dataframe is returned, not a copy.
+    """
+    if logger is None:
+        logger = module_logger
+    if how == "any":
+        drop_mask = df[column_names].isna().any(axis=1)
+    elif how == "all":
+        drop_mask = df[column_names].isna().all(axis=1)
+    else:
+        raise ValueError(
+            f"Invalid value for how: {how!r}. Expected either 'how' or 'all'."
+        )
+    if drop_mask.all():
+        raise RuntimeError(
+            f"The dataframe contains no fully defined objects based on the "
+            f"columns {column_names}."
+        )
+    n_dropped = drop_mask.sum()
+    if n_dropped:
+        df = df[~drop_mask].copy()
+        logger.info(
+            f"Dropped {n_dropped} rows from the dataframe that pertain to segments following the last "
+            f"cadence label in the piece."
+        )
+    return df
 
 
 T = TypeVar("T")
@@ -1398,3 +1464,8 @@ def transform_phrase_data(
 
 
 # endregion PhraseData helpers
+def safe_row_tuple(row):
+    try:
+        return ", ".join(row)
+    except TypeError:
+        return pd.NA
