@@ -391,7 +391,12 @@ class FeatureProcessingStep(PipelineStep):
                     resource.to_config(), self._allowed_features
                 )
             except ResourceNotProcessableError as e:
-                raise ResourceNotProcessableError(resource.name, self.name) from e
+                raise ResourceNotProcessableError(
+                    resource.resource_name,
+                    self.name,
+                    resource.name,
+                    self._allowed_features,
+                ) from e
 
     def _iter_features(self, dataset: Dataset) -> Iterator[DimcatResource]:
         """Iterate over all features that are required for this PipelineStep.

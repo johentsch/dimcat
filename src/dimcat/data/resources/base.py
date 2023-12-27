@@ -1397,12 +1397,12 @@ class FeatureName(ObjectEnum):
     DcmlAnnotations = "DcmlAnnotations"
     HarmonyLabels = "HarmonyLabels"
     KeyAnnotations = "KeyAnnotations"
-    PhraseAnnotations = "PhraseAnnotations"
-    PhraseComponents = "PhraseComponents"
-    PhraseLabels = "PhraseLabels"
     Measures = "Measures"
     Metadata = "Metadata"
     Notes = "Notes"
+    PhraseAnnotations = "PhraseAnnotations"
+    PhraseComponents = "PhraseComponents"
+    PhraseLabels = "PhraseLabels"
 
     def get_class(self) -> Type[F]:
         return get_class(self.name)

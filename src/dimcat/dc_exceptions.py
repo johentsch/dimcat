@@ -484,6 +484,8 @@ class ResourceNotProcessableError(DimcatError):
         1: lambda name: f"Cannot process {name!r}.",
         2: lambda name, step: f"{step!r} cannot process {name!r}.",
         3: lambda name, step, resource_type: f"{step!r} cannot process {name!r} of type {resource_type!r}.",
+        4: lambda name, step, resource_type, allowed: f"{step!r} cannot process {name!r} of type {resource_type!r}. "
+        f"Expected one of {allowed!r}.",
     }
 
 
