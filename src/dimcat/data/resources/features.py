@@ -771,17 +771,10 @@ def tuple_contains(series_with_tuples: S, *values: Hashable):
 
 
 class PhraseAnnotations(DcmlAnnotations):
-    _convenience_column_names = HarmonyLabels._convenience_column_names + [
-        "first_label",
-        "last_label",
-        "n_localkeys",
-        "localkeys",
-        "n_chords",
-        "chords",
-    ]
-    _feature_column_names = ["phraseend"]
+    _convenience_column_names = HarmonyLabels._convenience_column_names
+    _default_value_column = "chord"
+    _feature_column_names = ["chord"]
     _extractable_features = [FeatureName.PhraseComponents, FeatureName.PhraseLabels]
-    _default_value_column = "duration_qb"
 
     class Schema(DcmlAnnotations.Schema):
         n_ante = mm.fields.Int(
@@ -930,6 +923,18 @@ class PhraseAnnotations(DcmlAnnotations):
 
 
 class PhraseComponents(PhraseAnnotations):
+    _convenience_column_names = HarmonyLabels._convenience_column_names + [
+        "localkeys",
+        "n_modulations",
+        "modulatory_sequence",
+        "n_labels",
+        "labels",
+        "n_chords",
+        "chords",
+    ]
+    _default_value_column = "chords"
+    _feature_column_names = ["chords"]
+
     @property
     def phrase_df(self) -> D:
         """Returns the df that corresponds to the :class:`PhraseAnnotations` feature from which the
@@ -944,6 +949,38 @@ class PhraseComponents(PhraseAnnotations):
 
 
 class PhraseLabels(PhraseAnnotations):
+    _convenience_column_names = HarmonyLabels._convenience_column_names + [
+        "phrase_localkeys",
+        "phrase_n_modulations",
+        "phrase_modulatory_sequence",
+        "phrase_n_labels",
+        "phrase_labels",
+        "phrase_n_chords",
+        "phrase_chords",
+        "body_localkeys",
+        "body_n_modulations",
+        "body_modulatory_sequence",
+        "body_n_labels",
+        "body_labels",
+        "body_n_chords",
+        "body_chords",
+        "body_duration_qb",
+        "codetta_localkeys",
+        "codetta_n_modulations",
+        "codetta_modulatory_sequence",
+        "codetta_n_labels",
+        "codetta_labels",
+        "codetta_n_chords",
+        "codetta_chords",
+        "codetta_duration_qb",
+        "interlocked_ante",
+        "interlocked_post",
+        "end_label",
+        "end_chord",
+    ]
+    _default_value_column = "phrase_chords"
+    _feature_column_names = ["phrase_chords"]
+
     @property
     def phrase_df(self) -> D:
         """Returns the df that corresponds to the :class:`PhraseAnnotations` feature from which the
