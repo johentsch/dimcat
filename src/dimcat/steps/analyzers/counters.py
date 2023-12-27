@@ -3,11 +3,16 @@ from typing import Iterable, Optional
 
 import marshmallow as mm
 import pandas as pd
-from dimcat.base import FriendlyEnum, FriendlyEnumField
+from dimcat.base import FriendlyEnumField
 from dimcat.data.resources import Feature
 from dimcat.data.resources.base import DR, D, SomeDataframe, SomeSeries
 from dimcat.data.resources.dc import DimcatResource, FeatureSpecs, UnitOfAnalysis
-from dimcat.data.resources.results import CadenceCounts, Counts, NgramTable
+from dimcat.data.resources.results import (
+    CadenceCounts,
+    Counts,
+    NgramTable,
+    NgramTableFormat,
+)
 from dimcat.steps.analyzers.base import Analyzer, DispatchStrategy
 
 module_logger = logging.getLogger(__name__)
@@ -63,22 +68,6 @@ class Counter(Analyzer):
 
 class CadenceCounter(Counter):
     _new_resource_type = CadenceCounts
-
-
-class NgramTableFormat(FriendlyEnum):
-    """The format of the ngram table determining how many columns are copied for each of the n-1 shifts.
-    The original columns are always copied.
-    This setting my have a significant effect on the performance when creating the NgramTable.
-    """
-
-    FEATURES = "FEATURES"
-    FEATURES_CONTEXT = "FEATURES_CONTEXT"
-    CONVENIENCE = "CONVENIENCE"
-    CONVENIENCE_CONTEXT = "CONVENIENCE_CONTEXT"
-    AUXILIARY = "AUXILIARY"
-    AUXILIARY_CONTEXT = "AUXILIARY_CONTEXT"
-    FULL_WITHOUT_CONTEXT = "FULL_WITHOUT_CONTEXT"
-    FULL = "FULL"
 
 
 class NgramAnalyzer(Analyzer):

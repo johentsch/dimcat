@@ -1061,15 +1061,45 @@ class Durations(Result):
     pass
 
 
+class NgramTableFormat(FriendlyEnum):
+    """The format of the ngram table determining how many columns are copied for each of the n-1 shifts.
+    The original columns are always copied.
+    This setting my have a significant effect on the performance when creating the NgramTable.
+    """
+
+    FEATURES = "FEATURES"
+    FEATURES_CONTEXT = "FEATURES_CONTEXT"
+    CONVENIENCE = "CONVENIENCE"
+    CONVENIENCE_CONTEXT = "CONVENIENCE_CONTEXT"
+    AUXILIARY = "AUXILIARY"
+    AUXILIARY_CONTEXT = "AUXILIARY_CONTEXT"
+    FULL_WITHOUT_CONTEXT = "FULL_WITHOUT_CONTEXT"
+    FULL = "FULL"
+
+
 class NgramTable(Result):
     """A side-by-side concatenation of a feature with one or several shifted version of itself, so that each row
     contains both the original values and those of the n-1 following rows, concatenated on the right.
     This table keeps full flexibility in terms of how you want to create :class:`NgramTuples` from it.
     """
 
-    @cached_property
+    @property
     def ngram_levels(self) -> List[str]:
-        return list(self.df.columns.levels[0])
+        try:
+            return list(self.df.columns.levels[0])
+        except AttributeError as e:
+            self.logger.warning(
+                f"Calling the property {self.name}.ngram_levels resulted in the AttributeError {e}."
+            )
+            return []
+
+    @property
+    def format(self) -> NgramTableFormat:
+        return self._format
+
+    @format.setter
+    def format(self, format: NgramTableFormat):
+        self._format = NgramTableFormat(format)
 
     def _add_context_columns(
         self,

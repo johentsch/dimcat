@@ -12,10 +12,14 @@ from dimcat.data.resources.features import (
     HarmonyLabelsFormat,
     NotesFormat,
 )
-from dimcat.data.resources.results import PhraseDataFormat, ResultName, TerminalSymbol
+from dimcat.data.resources.results import (
+    NgramTableFormat,
+    PhraseDataFormat,
+    ResultName,
+    TerminalSymbol,
+)
 from dimcat.plotting import GroupMode
 from dimcat.steps.analyzers.base import AnalyzerName, DispatchStrategy
-from dimcat.steps.analyzers.counters import NgramTableFormat
 from dimcat.steps.loaders.base import FacetName
 from dimcat.utils import SortOrder
 
