@@ -626,14 +626,44 @@ class DimcatConfig(MutableMapping, DimcatObject):
     def create(self) -> DimcatObject:
         return self.options_schema.load(self._options)
 
-    def matches(self, config: DimcatConfig) -> bool:
-        """Returns True if both configs have the same :attr:`options_dtype` and the overlapping options are equal."""
+    def matches(
+        self,
+        config: DimcatConfig,
+        covariant: bool = False,
+        contravariant: bool = False,
+    ) -> bool:
+        """Returns True if both configs have the same :attr:`options_dtype` (optionally allowing subclasses) and
+        the overlapping options are equal.
+
+        Args:
+            config: The other config to compare against.
+            covariant:
+                If True, the other config's dtype matches even if it is a superclass of this config's dtype. In other
+                words, I describe an object which is of type config.dtype or a subclass of it.
+            contravariant:
+                If True, the other config's dtype matches even if it is a subclass of this config's dtype. In other
+                words, I describe an object which is of type config.dtype or a superclass of it.
+
+        Returns:
+            Returns True if both configs have the same :attr:`options_dtype` (optionally allowing subclasses) and
+            the overlapping options are equal.
+        """
         if not isinstance(config, DimcatConfig):
             raise TypeError(
                 f"Can only compare against DimcatConfig, not {type(config)}."
             )
         if self.options_dtype != config.options_dtype:
-            return False
+            if not (covariant or contravariant):
+                return False
+            if covariant and contravariant:
+                return is_subclass_of(
+                    self.options_dtype, config.options_dtype
+                ) or is_subclass_of(config.options_dtype, self.options_dtype)
+            if covariant:
+                return is_subclass_of(self.options_dtype, config.options_dtype)
+            if contravariant:
+                return is_subclass_of(config.options_dtype, self.options_dtype)
+
         overlapping_keys = set(self.options.keys()) & set(config.options.keys())
         for key in overlapping_keys:
             if self[key] != config[key]:

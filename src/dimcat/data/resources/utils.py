@@ -356,9 +356,16 @@ def features_argument2config_list(
 def check_configs_against_allowed_configs(
     configs: DimcatConfig | Iterable[DimcatConfig],
     allowed_configs: Optional[FeatureSpecs | Iterable[FeatureSpecs]],
-):
+    allow_subclasses: bool = True,
+) -> None:
     """Matches configs against allowed configs and raises as soon as any pair does not match. Two
     configs match if they have the same dtype and any overlapping key has the same value.
+
+    Args:
+        configs: Config(s) to be checked.
+        allowed_configs: The function raises if any of the ``configs`` does not match with any of these.
+        allow_subclasses:
+            If True (default), ``configs`` dtypes are allowed to be subclasses of the ``allowed_configs`` dtypes.
 
     Raises:
         ResourceNotProcessableError when any of the configs doesn't match with any of the allowed configs.
@@ -366,8 +373,11 @@ def check_configs_against_allowed_configs(
     if isinstance(configs, DimcatConfig):
         configs = [configs]
     allowed_configs = features_argument2config_list(allowed_configs)
+    covariant = allow_subclasses
     for configs in configs:
-        if not any(configs.matches(allowed) for allowed in allowed_configs):
+        if not any(
+            configs.matches(allowed, covariant=covariant) for allowed in allowed_configs
+        ):
             raise ResourceNotProcessableError(configs.options_dtype)
 
 
