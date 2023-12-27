@@ -15,7 +15,6 @@ from dimcat.data.resources.dc import HARMONY_FEATURE_NAMES, Playthrough
 from dimcat.data.resources.features import (
     CadenceLabels,
     DcmlAnnotations,
-    HarmonyLabels,
     KeyAnnotations,
     PhraseAnnotations,
 )
@@ -751,10 +750,6 @@ class MuseScoreHarmonies(MuseScoreFacet, AnnotationsFacet):
                     feature_df, group_keys, logger=self.logger
                 )
             else:  # issubclass(cls, (HarmonyLabels, PhraseAnnotations))
-                if issubclass(cls, HarmonyLabels):
-                    feature_df = drop_rows_with_missing_values(
-                        feature_df, feature_column_names, logger=self.logger
-                    )
                 feature_df = extend_harmony_feature(feature_df)
                 feature_df = add_chord_tone_intervals(feature_df)
                 feature_df = add_chord_tone_scale_degrees(feature_df)
@@ -771,6 +766,10 @@ class MuseScoreHarmonies(MuseScoreFacet, AnnotationsFacet):
                     ix_intervals = sum(group_intervals.values(), [])
                     feature_df = make_raw_phrase_df(
                         feature_df, ix_intervals, self.logger
+                    )
+                else:
+                    feature_df = drop_rows_with_missing_values(
+                        feature_df, feature_column_names, logger=self.logger
                     )
         return feature_df
 

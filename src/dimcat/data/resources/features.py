@@ -770,10 +770,7 @@ def tuple_contains(series_with_tuples: S, *values: Hashable):
     return series_with_tuples.map(values.intersection).astype(bool)
 
 
-class PhraseAnnotations(DcmlAnnotations):
-    _convenience_column_names = HarmonyLabels._convenience_column_names
-    _default_value_column = "chord"
-    _feature_column_names = ["chord"]
+class PhraseAnnotations(HarmonyLabels):
     _extractable_features = [FeatureName.PhraseComponents, FeatureName.PhraseLabels]
 
     class Schema(DcmlAnnotations.Schema):
