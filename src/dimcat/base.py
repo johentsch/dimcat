@@ -488,31 +488,29 @@ class DimcatConfig(MutableMapping, DimcatObject):
                     options = dict(dtype="DimcatConfig", options=options)
             elif "dtype" not in options:
                 options["dtype"] = dtype
+        error_msg = (
+            f"'dtype' key needs to be the name of a DimcatObject, not {dtype!r}. Registry:\n"
+            f"{DimcatObject._registry}"
+        )
         if dtype is None:
-            raise mm.ValidationError(
-                "'dtype' key cannot be None, it needs to be the name of a DimcatObject."
-            )
-        if not is_name_of_dimcat_class(dtype):
-            raise mm.ValidationError(
-                f"'dtype' key needs to be the name of a DimcatObject, not {dtype!r}. Registry:\n"
-                f"{DimcatObject._registry}"
-            )
-        self._options: dict = options
-        """The options dictionary wrapped and controlled by this DimcatConfig. Whenever a new value is set, it is
-        validated against the Schema of the DimcatObject specified under the key 'dtype'."""
+            raise mm.ValidationError(error_msg)
         if (
             isinstance(dtype, Enum)
             or isinstance(dtype, DimcatObject)
             or (isclass(dtype) and issubclass(dtype, DimcatObject))
         ):
             dtype_str = dtype.name
-            self._options["dtype"] = dtype_str
         elif isinstance(dtype, str):
-            pass
+            try:
+                dtype_str = get_class(dtype).name
+            except KeyError:
+                raise mm.ValidationError(error_msg)
         else:
-            raise ValueError(
-                f"{dtype!r} is not the name of a DimcatObject, needed to instantiate a Config."
-            )
+            raise mm.ValidationError(error_msg)
+        self._options: dict = options
+        """The options dictionary wrapped and controlled by this DimcatConfig. Whenever a new value is set, it is
+        validated against the Schema of the DimcatObject specified under the key 'dtype'."""
+        self._options["dtype"] = dtype_str
         report = self.validate(partial=True)
         if report:
             raise mm.ValidationError(
@@ -657,7 +655,8 @@ class DimcatConfig(MutableMapping, DimcatObject):
 # endregion Data and PipelineStep
 # region querying DimcatObjects by name
 @cache
-def get_class(name) -> Type[DimcatObject]:
+def get_class(name: str) -> Type[DO]:
+    """Resolve the given name to the class of the corresponding DimcatObject."""
     if isinstance(name, Enum):
         name = name.name
     if name.lower() == "dimcatobject":
@@ -678,8 +677,8 @@ def get_class(name) -> Type[DimcatObject]:
 
 
 @cache
-def is_name_of_dimcat_class(name) -> bool:
-    """"""
+def is_name_of_dimcat_class(name: str) -> bool:
+    """Returns True if the given name can be resolved to the name of a DimcatObject."""
     try:
         get_class(name)
         return True
