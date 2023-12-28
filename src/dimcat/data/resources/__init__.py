@@ -17,6 +17,7 @@ from .results import (
     Durations,
     NgramTable,
     NgramTuples,
+    PhraseData,
     Result,
     Transitions,
 )

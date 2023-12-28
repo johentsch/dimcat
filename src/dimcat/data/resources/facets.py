@@ -221,6 +221,8 @@ def extend_harmony_feature(
         "chord_and_mode",
         "chord_reduced",
         "chord_reduced_and_mode",
+        "applied_to",
+        "numeral_or_applied_to",
     )
     if all(col in feature_df.columns for col in columns_to_add):
         return feature_df
@@ -275,6 +277,17 @@ def extend_harmony_feature(
             feature_df[["chord", "localkey_mode"]]
             .apply(safe_row_tuple, axis=1)
             .rename("chord_and_mode")
+        )
+    if "applied_to" not in feature_df.columns:
+        applied_to = feature_df.relativeroot.str.split("/").map(
+            lambda lst: lst[-1], na_action="ignore"
+        )
+        concatenate_this.append(applied_to.copy().rename("applied_to"))
+    else:
+        applied_to = feature_df.applied_to
+    if "numeral_or_applied_to" not in feature_df.columns:
+        concatenate_this.append(
+            applied_to.fillna(feature_df.numeral).rename("numeral_or_applied_to")
         )
     # if "root_roman_resolved" not in feature_df.columns:
     #     concatenate_this.append(
@@ -754,8 +767,6 @@ class MuseScoreHarmonies(MuseScoreFacet, AnnotationsFacet):
                 feature_df = add_chord_tone_intervals(feature_df)
                 feature_df = add_chord_tone_scale_degrees(feature_df)
                 if issubclass(cls, PhraseAnnotations):
-                    feature_df.chord.ffill(inplace=True)
-                    groupby_levels = feature_df.index.names[:-1]
                     group_intervals = get_index_intervals_for_phrases(
                         harmony_labels=feature_df,
                         group_cols=groupby_levels,

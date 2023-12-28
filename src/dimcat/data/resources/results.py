@@ -2185,6 +2185,7 @@ class PhraseData(Result):
             A reindexed copy of the phrase data.
         """
         phrase_start_mask = self._get_phrase_start_mask()
+        assert len(grouping.shape) == 1, "Expecting a Series."
         substage_start_mask = (
             (grouping != grouping.shift()).to_numpy()
         ) | phrase_start_mask
