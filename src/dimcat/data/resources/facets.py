@@ -337,6 +337,16 @@ def _get_body_start_positions_from_raw_phrases(phrase_df: D) -> List[int]:
     return body_start_positions
 
 
+def _get_boolean_mask_for_groups_last(feature_df: D, groupby) -> npt.NDArray[bool]:
+    """Returns a boolean mask where each row that comes last in one of the groups is marked as True."""
+    groups_last_idx = np.array(
+        [idx[-1] for idx in feature_df.groupby(groupby).indices.values()]
+    )
+    result = np.zeros(feature_df.shape[0], bool)
+    result[groups_last_idx] = True
+    return result
+
+
 def _get_index_intervals_for_phrases(
     markers: S,
     n_ante: int = 0,
@@ -577,6 +587,20 @@ def make_raw_phrase_df(
     body_end_positions = _get_body_end_positions_from_raw_phrases(new_index)
     duration_col_position = phrase_df.columns.get_loc("duration_qb")
     phrase_df.iloc[body_end_positions, duration_col_position] = 0.0
+    components_lasts = _get_boolean_mask_for_groups_last(
+        new_index, ["phrase_id", "phrase_component"]
+    )
+    updated_durations = (
+        phrase_df.quarterbeats.shift(-1) - phrase_df.quarterbeats
+    ).astype(float)
+    updated_duration_qb_column = phrase_df.duration_qb.where(
+        components_lasts, updated_durations
+    )
+    updated_mask = updated_duration_qb_column != phrase_df.duration_qb
+    logger.debug(
+        f"{updated_mask.sum()} values have been updated in the 'duration_qb' for phrase annotations."
+    )
+    phrase_df.duration_qb = updated_duration_qb_column
     return phrase_df
 
 
