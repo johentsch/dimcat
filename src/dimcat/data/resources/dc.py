@@ -2109,7 +2109,13 @@ class Feature(DimcatResource):
             column_names.extend(self._convenience_column_names)
         if feature_columns and self._feature_column_names:
             column_names.extend(self._feature_column_names)
-        available_columns = [col for col in column_names if col in self.df.columns]
+        available_columns = []
+        already_included = set()
+        for col in reversed(column_names):
+            if col not in already_included and col in self.df.columns:
+                available_columns.append(col)
+                already_included.add(col)
+        available_columns = list(reversed(available_columns))
         if index_levels:
             available_columns = self.get_level_names() + available_columns
         return available_columns
