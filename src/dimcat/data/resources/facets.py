@@ -18,7 +18,6 @@ from dimcat.data.resources.features import (
     KeyAnnotations,
     PhraseAnnotations,
 )
-from dimcat.data.resources.results import tuple2str
 from dimcat.data.resources.utils import (
     apply_playthrough,
     boolean_is_minor_column_to_mode,
@@ -26,6 +25,7 @@ from dimcat.data.resources.utils import (
     drop_rows_with_missing_values,
     make_adjacency_groups,
     safe_row_tuple,
+    tuple2str,
 )
 from dimcat.dc_exceptions import DataframeIsMissingExpectedColumnsError
 from numpy import typing as npt

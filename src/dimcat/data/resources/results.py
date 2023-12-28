@@ -23,7 +23,6 @@ from typing import (
 
 import frictionless as fl
 import marshmallow as mm
-import ms3
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
@@ -50,7 +49,11 @@ from typing_extensions import Self
 
 from .base import D, S
 from .dc import DimcatResource, UnitOfAnalysis
-from .utils import append_index_levels, make_range_index_from_boolean_mask
+from .utils import (
+    append_index_levels,
+    make_range_index_from_boolean_mask,
+    merge_columns_into_one,
+)
 
 module_logger = logging.getLogger(__name__)
 
@@ -171,49 +174,6 @@ def turn_proportions_into_percentage_strings(
         return result.rename(columns=lambda x: column_name)
     else:
         return result.rename(column_name)
-
-
-def tuple2str(
-    tup: tuple,
-    join_str: Optional[str] = ", ",
-    recursive: bool = True,
-    keep_parentheses: bool = False,
-) -> str:
-    """Used for turning n-gram components into strings, e.g. for display on plot axes.
-
-    Args:
-        tup: Tuple to be returned as string.
-        join_str:
-            String to be interspersed between tuple elements. If None, result is ``str(tup)`` and ``recursive`` is
-            ignored.
-        recursive:
-            If True (default) tuple elements that are tuples themselves will be joined together recursively, using the
-            same ``join_str`` (except when it's None). Inner tuples always keep their parentheses.
-        keep_parentheses: If False (default), the outer parentheses are removed. Pass True to keep them in the string.
-
-    Returns:
-        A string representing the tuple.
-    """
-    try:
-        if join_str is None:
-            result = str(tup)
-            if keep_parentheses:
-                return result
-            return result[1:-1]
-        if recursive:
-            result = join_str.join(
-                tuple2str(e, join_str=join_str, keep_parentheses=True)
-                if isinstance(e, tuple)
-                else str(e)
-                for e in tup
-            )
-        else:
-            result = join_str.join(str(e) for e in tup)
-    except TypeError:
-        return str(tup)
-    if keep_parentheses:
-        return f"({result})"
-    return result
 
 
 class ResultName(ObjectEnum):
@@ -1676,23 +1636,8 @@ class NgramTable(Result):
         """
         selection = self._subselect_component_columns(level, columns)
         return_tuples = not isinstance(selection, pd.Series)
-        if fillna is not None:
-            selection = selection.fillna(fillna)
         if return_tuples:
-            selection = pd.Series(
-                selection.itertuples(index=False, name=None), index=selection.index
-            )
-            if join_str is not None:
-                if not isinstance(join_str, str):
-                    if join_str is True:
-                        join_str = ", "
-                    elif join_str is False:
-                        join_str = ""
-                    else:
-                        raise TypeError(
-                            f"join_str must be a string or a boolean, got {join_str!r} ({type(join_str)})"
-                        )
-                selection = ms3.transform(selection, tuple2str, join_str=join_str)
+            selection = merge_columns_into_one(selection, join_str, fillna)
         elif join_str is not None:
             selection = selection.astype("string")
         result = selection.rename(level)

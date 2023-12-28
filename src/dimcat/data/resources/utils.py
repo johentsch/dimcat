@@ -12,6 +12,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Dict,
+    Hashable,
     Iterable,
     List,
     Literal,
@@ -459,7 +460,7 @@ def fl_fields2pandas_params(fields: List[fl.Field]) -> Tuple[dict, dict, list]:
         elif field.type == "date":
             parse_dates.append(field.name)
         elif field.type == "array":
-            converters[field.name] = str2tuple
+            converters[field.name] = str2inttuple
         # missing (see https://specs.frictionlessdata.io/table-schema)
         # - object (i.e. JSON/ a dict)
         # - date (i.e. date without time)
@@ -1061,6 +1062,39 @@ def make_tsv_resource(name: Optional[str] = None) -> fl.Resource:
     return resource
 
 
+def merge_columns_into_one(
+    df: D,
+    join_str: Optional[str | bool] = None,
+    fillna: Optional[Hashable] = None,
+) -> S:
+    """Merge all columns of a dataframe into a single column.
+
+    Args:
+        df: Dataframe to reduce.
+        join_str:
+            By default (None), the resulting columns contain tuples. If you want them to contain strings,
+            you may pass
+
+            - True to concatenate the tuple values for a given n-gram component separated by ", " --
+              yielding strings that look like tuples without parentheses
+            - False to concatenate without any string in-between the values
+            - a string to be used as the separator between the tuple values.
+
+        fillna:
+            Pass a value to replace all missing values with it.
+
+    Returns:
+        A series containing tuples or strings.
+    """
+    if fillna is not None:
+        df = df.fillna(fillna)
+    result = pd.Series(df.itertuples(index=False, name=None), index=df.index)
+    if join_str is not None:
+        join_str = resolve_join_str_argument(join_str)
+        result = ms3.transform(result, tuple2str, join_str=join_str)
+    return result
+
+
 def merge_ties(
     df: D,
     return_dropped: bool = False,
@@ -1287,6 +1321,34 @@ def resolve_recognized_piece_columns_argument(
         return list(recognized_piece_columns)
 
 
+def resolve_join_str_argument(
+    join_str: Optional[bool | str | Tuple[bool | str, ...]]
+) -> Optional[str]:
+    """Helper function that resolves a join_str argument to a string or None by replacing boolean values with the
+    defaults ", " for True and "" for False.
+    """
+    if join_str is None:
+        return
+    if not isinstance(join_str, str):
+        if join_str is True:
+            join_str = ", "
+        elif join_str is False:
+            join_str = ""
+        else:
+            raise TypeError(
+                f"join_str must be a string or a boolean, got {join_str!r} ({type(join_str)})"
+            )
+    return join_str
+
+
+def safe_row_tuple(row: Iterable[str]) -> str | Literal[pd.NA]:
+    """Join the given strings together separated by ', ' but catch TypeErrors by returning pd.NA instead."""
+    try:
+        return ", ".join(row)
+    except TypeError:
+        return pd.NA
+
+
 def store_json(
     data: dict, filepath: str, indent: int = 2, make_dirs: bool = True, **kwargs
 ):
@@ -1307,8 +1369,52 @@ def store_json(
         json.dump(data, f, **kwargs)
 
 
-def str2tuple(s):
+def str2inttuple(s):
+    """Non-strict version of :func:`ms3.str2inttuple` which does not fail on non-integer values."""
     return ms3.str2inttuple(s, strict=False)
+
+
+def tuple2str(
+    tup: tuple,
+    join_str: Optional[str] = ", ",
+    recursive: bool = True,
+    keep_parentheses: bool = False,
+) -> str:
+    """Used for turning n-gram components into strings, e.g. for display on plot axes.
+
+    Args:
+        tup: Tuple to be returned as string.
+        join_str:
+            String to be interspersed between tuple elements. If None, result is ``str(tup)`` and ``recursive`` is
+            ignored.
+        recursive:
+            If True (default) tuple elements that are tuples themselves will be joined together recursively, using the
+            same ``join_str`` (except when it's None). Inner tuples always keep their parentheses.
+        keep_parentheses: If False (default), the outer parentheses are removed. Pass True to keep them in the string.
+
+    Returns:
+        A string representing the tuple.
+    """
+    try:
+        if join_str is None:
+            result = str(tup)
+            if keep_parentheses:
+                return result
+            return result[1:-1]
+        if recursive:
+            result = join_str.join(
+                tuple2str(e, join_str=join_str, keep_parentheses=True)
+                if isinstance(e, tuple)
+                else str(e)
+                for e in tup
+            )
+        else:
+            result = join_str.join(str(e) for e in tup)
+    except TypeError:
+        return str(tup)
+    if keep_parentheses:
+        return f"({result})"
+    return result
 
 
 def value2bool(value: str | float | int | bool) -> bool | str | float | int:
@@ -1474,8 +1580,3 @@ def transform_phrase_data(
 
 
 # endregion PhraseData helpers
-def safe_row_tuple(row):
-    try:
-        return ", ".join(row)
-    except TypeError:
-        return pd.NA
