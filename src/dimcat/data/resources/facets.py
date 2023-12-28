@@ -302,7 +302,10 @@ def extend_harmony_feature(
 
 
 def _get_body_end_positions_from_raw_phrases(phrase_df: D) -> List[int]:
-    """Returns for each phrase body the index position of the last row."""
+    """Returns for each phrase body the index position of the last row. Typical input is a dataframe representing a
+    MultiIndex. Expects the columns 'phrase_id' and  'phrase_component'. If the latter is present, all components
+    except 'body' are disregarded. If not, phrase sequences are expected to be bodies only.
+    """
     body_end_positions = []
     if "phrase_component" in phrase_df.columns:
         for (phrase_id, phrase_component), idx in phrase_df.groupby(
@@ -571,7 +574,7 @@ def make_raw_phrase_df(
     phrase_df.index = pd.MultiIndex.from_frame(new_index)
     # here we correct durations for the fact that the end symbol is included both as last symbol of the body and the
     # first symbol of the codetta or subsequent phrase. At the end of the body, the duration is set to 0.
-    body_end_positions = _get_body_end_positions_from_raw_phrases(phrase_df)
+    body_end_positions = _get_body_end_positions_from_raw_phrases(new_index)
     duration_col_position = phrase_df.columns.get_loc("duration_qb")
     phrase_df.iloc[body_end_positions, duration_col_position] = 0.0
     return phrase_df
