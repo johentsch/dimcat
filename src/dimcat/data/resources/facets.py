@@ -763,6 +763,44 @@ class MuseScoreHarmonies(MuseScoreFacet, AnnotationsFacet):
                     feature_df, group_keys, logger=self.logger
                 )
             else:  # issubclass(cls, (HarmonyLabels, PhraseAnnotations))
+                if issubclass(cls, PhraseAnnotations):
+                    missing_mask = feature_df.chord.isna()
+                    groupby_levels = feature_df.index.names[:-1]
+                    group_start_idx = np.array(
+                        [
+                            idx[0]
+                            for idx in feature_df.groupby(
+                                groupby_levels
+                            ).indices.values()
+                        ]
+                    )
+                    group_start_mask = np.zeros_like(missing_mask, bool)
+                    group_start_mask[group_start_idx] = True
+                    feature_df.loc[missing_mask, ["chord_tones", "added_tones"]] = pd.NA
+                    ffill_mask = missing_mask | (
+                        missing_mask.shift(-1).fillna(False) & ~group_start_mask
+                    )
+                    harmony_fill_columns = [
+                        "pedal",
+                        "chord",
+                        "special",
+                        "numeral",
+                        "form",
+                        "figbass",
+                        "changes",
+                        "relativeroot",
+                        "chord_type",
+                        "chord_tones",
+                        "root",
+                        "bass_note",
+                        "alt_label",
+                        "pedalend",
+                    ]
+                    feature_df.loc[ffill_mask, harmony_fill_columns] = (
+                        feature_df.loc[ffill_mask, harmony_fill_columns]
+                        .groupby(groupby_levels)
+                        .ffill()
+                    )
                 feature_df = extend_harmony_feature(feature_df)
                 feature_df = add_chord_tone_intervals(feature_df)
                 feature_df = add_chord_tone_scale_degrees(feature_df)
