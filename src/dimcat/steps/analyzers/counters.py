@@ -12,6 +12,7 @@ from dimcat.data.resources.results import (
     Counts,
     NgramTable,
     NgramTableFormat,
+    PhraseData,
 )
 from dimcat.steps.analyzers.base import Analyzer, DispatchStrategy
 
@@ -71,7 +72,7 @@ class CadenceCounter(Counter):
 
 
 class NgramAnalyzer(Analyzer):
-    _allowed_features = (Feature,)
+    _allowed_features = (Feature, PhraseData)
     _new_resource_type = NgramTable
 
     @staticmethod
@@ -183,13 +184,16 @@ class NgramAnalyzer(Analyzer):
             NgramTableFormat.FULL_WITHOUT_CONTEXT,
             NgramTableFormat.FULL,
         )
-        columns_to_shift = feature.get_available_column_names(
-            context_columns=include_context_columns,
-            auxiliary_columns=include_auxiliary_columns,
-            convenience_columns=include_convenience_columns,
-            feature_columns=True,
-        )
-        df_to_shift = feature.df[columns_to_shift]
+        if hasattr(feature, "get_available_column_names"):
+            columns_to_shift = feature.get_available_column_names(
+                context_columns=include_context_columns,
+                auxiliary_columns=include_auxiliary_columns,
+                convenience_columns=include_convenience_columns,
+                feature_columns=True,
+            )
+            df_to_shift = feature.df[columns_to_shift]
+        else:
+            df_to_shift = feature.df
         concatenate_this = {"a": feature.df}
         for i in range(1, self.n):
             key = chr(ord("a") + i)
@@ -204,12 +208,13 @@ class NgramAnalyzer(Analyzer):
         result: NgramTable,
         original_resource: Feature,
     ) -> NgramTable:
-        result._auxiliary_columns = original_resource.get_available_column_names(
-            context_columns=True
-        )
-        result._convenience_columns = original_resource.get_available_column_names(
-            auxiliary_columns=True, convenience_columns=True
-        )
+        if hasattr(original_resource, "get_available_column_names"):
+            result._auxiliary_columns = original_resource.get_available_column_names(
+                context_columns=True
+            )
+            result._convenience_columns = original_resource.get_available_column_names(
+                auxiliary_columns=True, convenience_columns=True
+            )
         return result
 
     def resource_name_factory(self, resource: DR) -> str:

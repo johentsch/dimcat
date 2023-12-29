@@ -348,7 +348,7 @@ def features_argument2config_list(
         features = [features]
     configs = []
     for specs in features:
-        configs.append(feature_specs2config(specs))
+        configs.append(make_config_from_specs(specs))
     if allowed_configs is not None:
         check_configs_against_allowed_configs(configs, allowed_configs)
     return configs

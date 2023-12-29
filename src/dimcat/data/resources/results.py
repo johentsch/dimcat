@@ -1737,7 +1737,7 @@ class NgramTable(Result):
             selected_levels = self.ngram_levels
         n = len(selected_levels)
         if len(ngram_component_columns) == 0:
-            component_columns = [self.feature_columns] * n
+            component_columns = [None] * n
         elif len(ngram_component_columns) == 1:
             component_columns = [ngram_component_columns[0]] * n
         else:
@@ -1978,24 +1978,31 @@ class NgramTable(Result):
     ) -> D | S:
         """Retrieve the specified columns for the specified n-gram level ('a, 'b', etc.) from the NgramTable."""
         return_series = False
-        if columns is None:
-            columns = self.feature_columns
-            if len(columns) == 1:
-                return_series = True
-        elif isinstance(columns, str):
-            return_series = True
-            columns = [columns]
+        if columns is None and not any(
+            col in self.df.columns for col in self.feature_columns
+        ):
+            # default to all available columns
+            column_names = [col for col in self.df.columns if col[0] == level]
         else:
-            columns = list(columns)
-        column_names = list(product([level], columns))
-        missing = [col for col in column_names if col not in self.df.columns]
-        n_missing = len(missing)
-        if n_missing:
-            if n_missing == len(column_names):
-                msg = f"None of the requested columns {columns} are present in the NgramTable."
+            if columns is None:
+                columns = self.feature_columns
+                if len(columns) == 1:
+                    return_series = True
+            elif isinstance(columns, str):
+                return_series = True
+                columns = [columns]
             else:
-                msg = f"The following columns are not present in the NgramTable: {missing}"
-            raise ValueError(msg)
+                columns = list(columns)
+            column_names = list(product([level], columns))
+            missing = [col for col in column_names if col not in self.df.columns]
+            n_missing = len(missing)
+            if n_missing:
+                if n_missing == len(column_names):
+                    msg = f"None of the requested columns {column_names} are present in the NgramTable."
+                else:
+                    msg = f"The following columns are not present in the NgramTable: {missing}"
+                msg += f"\nAvailable columns: {self.df.columns.to_list()!r}"
+                raise ValueError(msg)
         if return_series:
             selection = self.df.loc[:, column_names[0]]
         else:

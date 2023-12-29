@@ -590,6 +590,10 @@ def make_raw_phrase_df(
     components_lasts = _get_boolean_mask_for_groups_last(
         new_index, ["phrase_id", "phrase_component"]
     )
+    # ToDo: add to documentation the fact that the duration of terminal harmonies is not amended. This allows for
+    # inspecting the duratioin of the last harmony but leads to the fact that the summed duration of all phrases in a
+    # piece may be longer than the piece itself, namely when a long terminal harmony is 'interrupted' by the beginning
+    # of the next phrase: the following code duplicates the duration following the {
     updated_durations = (
         phrase_df.quarterbeats.shift(-1) - phrase_df.quarterbeats
     ).astype(float)
