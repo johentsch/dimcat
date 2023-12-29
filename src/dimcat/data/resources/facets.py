@@ -13,6 +13,9 @@ from dimcat.data.resources import DimcatResource, FeatureName, Metadata, Resourc
 from dimcat.data.resources.base import D, S
 from dimcat.data.resources.dc import HARMONY_FEATURE_NAMES, Playthrough
 from dimcat.data.resources.features import (
+    CHORD_TONE_INTERVALS_COLUMNS,
+    CHORD_TONE_SCALE_DEGREES_COLUMNS,
+    HARMONY_FEATURE_COLUMNS,
     CadenceLabels,
     DcmlAnnotations,
     KeyAnnotations,
@@ -40,11 +43,7 @@ def add_chord_tone_scale_degrees(
     feature_df,
 ):
     """Turns 'chord_tones' column into multiple scale-degree columns."""
-    columns_to_add = (
-        "scale_degrees",
-        "scale_degrees_and_mode" "scale_degrees_major",
-        "scale_degrees_minor",
-    )
+    columns_to_add = CHORD_TONE_SCALE_DEGREES_COLUMNS
     if all(col in feature_df.columns for col in columns_to_add):
         return feature_df
     expected_columns = ("chord_tones", "localkey_is_minor", "localkey_mode")
@@ -93,10 +92,7 @@ def add_chord_tone_intervals(
     present, where the chord_tones (which come as fifths) are represented as strings representing intervals over the
     bass_note and above the root, if present.
     """
-    columns_to_add = (
-        "intervals_over_bass",
-        "intervals_over_root",
-    )
+    columns_to_add = CHORD_TONE_INTERVALS_COLUMNS
     if all(col in feature_df.columns for col in columns_to_add):
         return feature_df
     expected_columns = ("chord_tones",)  # "root" is optional
@@ -197,7 +193,7 @@ def extend_keys_feature(
             "localkey_mode"
         ),
         ms3.transform(
-            feature_df, ms3.resolve_relative_keys, ["localkey", "localkey_is_minor"]
+            feature_df, ms3.resolve_relative_keys, ["localkey", "globalkey_is_minor"]
         ).rename("localkey_resolved"),
     ]
     feature_df = pd.concat(concatenate_this, axis=1)
@@ -215,15 +211,7 @@ def extend_harmony_feature(
     feature_df,
 ):
     """Requires previous application of :func:`transform_keys_feature`."""
-    columns_to_add = (
-        "root_roman",
-        "pedal_resolved",
-        "chord_and_mode",
-        "chord_reduced",
-        "chord_reduced_and_mode",
-        "applied_to_numeral",
-        "numeral_or_applied_to_numeral",
-    )
+    columns_to_add = HARMONY_FEATURE_COLUMNS
     if all(col in feature_df.columns for col in columns_to_add):
         return feature_df
     expected_columns = (
@@ -233,8 +221,10 @@ def extend_harmony_feature(
         "pedal",
         "numeral",
         "relativeroot",
+        "globalkey_is_minor",
         "localkey_is_minor",
         "localkey_mode",
+        "localkey_resolved",
     )
     if not all(col in feature_df.columns for col in expected_columns):
         raise DataframeIsMissingExpectedColumnsError(
@@ -247,6 +237,40 @@ def extend_harmony_feature(
             (feature_df.numeral + ("/" + feature_df.relativeroot).fillna("")).rename(
                 "root_roman"
             )
+        )
+    if "relativeroot_resolved" not in feature_df.columns:
+        concatenate_this.append(
+            (
+                relativeroot_resolved := ms3.transform(
+                    feature_df,
+                    ms3.resolve_relative_keys,
+                    ["relativeroot", "localkey_is_minor"],
+                ).rename("relativeroot_resolved")
+            )
+        )
+    else:
+        relativeroot_resolved = feature_df.relativeroot_resolved
+    if "effective_localkey" not in feature_df.columns:
+        relativeroot_and_localkey = (relativeroot_resolved + "/").fillna(
+            ""
+        ) + feature_df.localkey_resolved
+        relativeroot_and_localkey = pd.concat(
+            [relativeroot_and_localkey, feature_df.globalkey_is_minor], axis=1
+        )
+        concatenate_this.append(
+            (
+                effective_localkey := ms3.transform(
+                    relativeroot_and_localkey, ms3.resolve_relative_keys
+                ).rename("effective_localkey")
+            )
+        )
+    else:
+        effective_localkey = feature_df.effective_localkey
+    if "effective_localkey_is_minor" not in feature_df.columns:
+        concatenate_this.append(
+            effective_localkey.str.islower()
+            .fillna(feature_df.localkey_is_minor)
+            .rename("effective_localkey_is_minor")
         )
     if "chord_reduced" not in feature_df.columns:
         concatenate_this.append(
@@ -282,14 +306,14 @@ def extend_harmony_feature(
         applied_to_numeral = feature_df.relativeroot.str.split("/").map(
             lambda lst: lst[-1], na_action="ignore"
         )
-        concatenate_this.append(applied_to_numeral.copy().rename("applied_to_numeral"))
+        concatenate_this.append(applied_to_numeral.rename("applied_to_numeral"))
     else:
         applied_to_numeral = feature_df.applied_to_numeral
     if "numeral_or_applied_to_numeral" not in feature_df.columns:
         concatenate_this.append(
-            applied_to_numeral.fillna(feature_df.numeral).rename(
-                "numeral_or_applied_to_numeral"
-            )
+            applied_to_numeral.copy()
+            .fillna(feature_df.numeral)
+            .rename("numeral_or_applied_to_numeral")
         )
     # if "root_roman_resolved" not in feature_df.columns:
     #     concatenate_this.append(

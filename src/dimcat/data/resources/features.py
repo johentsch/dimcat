@@ -125,20 +125,37 @@ BASS_NOTE_CONVENIENCE_COLUMNS = [
     "bass_note_over_local_tonic",
 ]
 
+CHORD_TONE_INTERVALS_COLUMNS = [
+    "intervals_over_bass",
+    "intervals_over_root",
+]
 
-HARMONY_CONVENIENCE_COLUMNS = [
-    "chord_and_mode",
-    "chord_reduced",
-    "chord_reduced_and_mode",
+CHORD_TONE_SCALE_DEGREES_COLUMNS = [
     "scale_degrees",
     "scale_degrees_and_mode",
     "scale_degrees_major",
     "scale_degrees_minor",
-    "intervals_over_bass",
-    "intervals_over_root",
-    "applied_to_numeral",
-    "numeral_or_applied_to_numeral",
 ]
+
+HARMONY_FEATURE_COLUMNS = [
+    "root_roman",  # numeral/relativeroot
+    "relativeroot_resolved",
+    "effective_localkey",  # relativeroot_resolved resolved against localkey
+    "effective_localkey_is_minor" "pedal_resolved",
+    "chord_and_mode",
+    "chord_reduced",  # without parentheses ('changes')
+    "chord_reduced_and_mode",
+    "applied_to_numeral",  # if relativeroot is recursive, only the component following the last slash / (i.e. the
+    # lowest level, which can be interpreted as the current localkey's numeral being elaborated)
+    "numeral_or_applied_to_numeral",  # like the previous but missing values filled with 'numeral'
+]
+
+
+HARMONY_CONVENIENCE_COLUMNS = (
+    HARMONY_FEATURE_COLUMNS
+    + CHORD_TONE_INTERVALS_COLUMNS
+    + CHORD_TONE_SCALE_DEGREES_COLUMNS
+)
 """These columns are included in all :class:`Annotations` features that grant full access to DCML harmony labels.
 First and foremost, this includes :class:`HarmonyLabels`, but also :class:`PhraseAnnotations` and derivatives.
 """
@@ -1211,7 +1228,3 @@ class Measures(Feature):
 
 
 # endregion Structure
-# region helpers
-
-
-# endregion helpers
