@@ -177,7 +177,7 @@ def extend_keys_feature(
     columns_to_add = (
         "globalkey_mode",
         "localkey_mode",
-        "localkey_resolved",
+        "localkey_resolved",  # resolves relative keys such as V/V (to II)
         "localkey_and_mode",
     )
     if all(col in feature_df.columns for col in columns_to_add):
@@ -221,8 +221,8 @@ def extend_harmony_feature(
         "chord_and_mode",
         "chord_reduced",
         "chord_reduced_and_mode",
-        "applied_to",
-        "numeral_or_applied_to",
+        "applied_to_numeral",
+        "numeral_or_applied_to_numeral",
     )
     if all(col in feature_df.columns for col in columns_to_add):
         return feature_df
@@ -278,16 +278,18 @@ def extend_harmony_feature(
             .apply(safe_row_tuple, axis=1)
             .rename("chord_and_mode")
         )
-    if "applied_to" not in feature_df.columns:
-        applied_to = feature_df.relativeroot.str.split("/").map(
+    if "applied_to_numeral" not in feature_df.columns:
+        applied_to_numeral = feature_df.relativeroot.str.split("/").map(
             lambda lst: lst[-1], na_action="ignore"
         )
-        concatenate_this.append(applied_to.copy().rename("applied_to"))
+        concatenate_this.append(applied_to_numeral.copy().rename("applied_to_numeral"))
     else:
-        applied_to = feature_df.applied_to
-    if "numeral_or_applied_to" not in feature_df.columns:
+        applied_to_numeral = feature_df.applied_to_numeral
+    if "numeral_or_applied_to_numeral" not in feature_df.columns:
         concatenate_this.append(
-            applied_to.fillna(feature_df.numeral).rename("numeral_or_applied_to")
+            applied_to_numeral.fillna(feature_df.numeral).rename(
+                "numeral_or_applied_to_numeral"
+            )
         )
     # if "root_roman_resolved" not in feature_df.columns:
     #     concatenate_this.append(

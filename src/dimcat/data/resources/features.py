@@ -136,8 +136,8 @@ HARMONY_CONVENIENCE_COLUMNS = [
     "scale_degrees_minor",
     "intervals_over_bass",
     "intervals_over_root",
-    "applied_to",
-    "numeral_or_applied_to",
+    "applied_to_numeral",
+    "numeral_or_applied_to_numeral",
 ]
 """These columns are included in all :class:`Annotations` features that grant full access to DCML harmony labels.
 First and foremost, this includes :class:`HarmonyLabels`, but also :class:`PhraseAnnotations` and derivatives.
