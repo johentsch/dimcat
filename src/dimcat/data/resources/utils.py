@@ -44,6 +44,7 @@ from dimcat.dc_exceptions import (
 from dimcat.dc_warnings import ResourceWithRangeIndexUserWarning
 from marshmallow.fields import Boolean
 from ms3 import reduce_dataframe_duration_to_first_row
+from ms3.expand_dcml import expand_labels
 from numpy import typing as npt
 from numpy._typing import NDArray
 
@@ -294,6 +295,33 @@ def condense_dataframe_by_groups(
         reduce_dataframe_duration_to_first_row
     )
     return condensed
+
+
+def condense_pedal_points(df):
+    """Condenses pedal points into single rows. The duration of the pedal point is summed up and the chord is
+    replaced by the pedal
+    """
+    group_start_mask = make_group_start_mask(df, df.index.names[:-1])
+    pedal_point_mask = df.pedal.notna()
+    shifted_pedals = df.pedal.shift().fillna("SENTINEL")
+    shifted_pedals.loc[
+        group_start_mask
+    ] = "SENTINEL"  # make sure to separate a terminal pedal point (ending a piece)
+    # from an initial one (beginning of next piece) on the same harmony (an extremely unlikely scenario)
+    pedal_point_start_mask = (df.pedal != shifted_pedals).fillna(False)
+    pedal_drop_mask = pedal_point_mask & ~pedal_point_start_mask
+    expanded_pedal_harmonies = expand_labels(
+        df.loc[pedal_point_start_mask, :"pedal"],
+        column="pedal",
+        propagate=False,
+        skip_checks=True,
+    )
+    overwrite_with = expanded_pedal_harmonies.loc(axis=1)["chord":]
+    overwrite_columns = overwrite_with.columns
+    df.loc[pedal_point_start_mask, overwrite_columns] = overwrite_with
+    df = df[~pedal_drop_mask]
+    update_duration_qb(df, df.pedal.notna())
+    return df
 
 
 def ensure_level_named_piece(

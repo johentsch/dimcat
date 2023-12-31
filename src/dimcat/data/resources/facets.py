@@ -25,6 +25,7 @@ from dimcat.data.resources.utils import (
     apply_playthrough,
     boolean_is_minor_column_to_mode,
     condense_dataframe_by_groups,
+    condense_pedal_points,
     drop_rows_with_missing_values,
     make_adjacency_groups,
     make_group_start_mask,
@@ -841,9 +842,6 @@ class MuseScoreHarmonies(MuseScoreFacet, AnnotationsFacet):
                         .groupby(groupby_levels)
                         .ffill()
                     )
-                feature_df = extend_harmony_feature(feature_df)
-                feature_df = add_chord_tone_intervals(feature_df)
-                feature_df = add_chord_tone_scale_degrees(feature_df)
                 if issubclass(cls, PhraseAnnotations):
                     group_intervals = get_index_intervals_for_phrases(
                         harmony_labels=feature_df,
@@ -856,10 +854,14 @@ class MuseScoreHarmonies(MuseScoreFacet, AnnotationsFacet):
                     feature_df = make_raw_phrase_df(
                         feature_df, ix_intervals, self.logger
                     )
+                    feature_df = condense_pedal_points(feature_df)
                 else:
                     feature_df = drop_rows_with_missing_values(
                         feature_df, feature_column_names, logger=self.logger
                     )
+                feature_df = extend_harmony_feature(feature_df)
+                feature_df = add_chord_tone_intervals(feature_df)
+                feature_df = add_chord_tone_scale_degrees(feature_df)
         return feature_df
 
 
