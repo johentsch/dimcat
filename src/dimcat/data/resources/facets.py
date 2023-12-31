@@ -27,8 +27,10 @@ from dimcat.data.resources.utils import (
     condense_dataframe_by_groups,
     drop_rows_with_missing_values,
     make_adjacency_groups,
+    make_group_start_mask,
     safe_row_tuple,
     tuple2str,
+    update_duration_qb,
 )
 from dimcat.dc_exceptions import DataframeIsMissingExpectedColumnsError
 from numpy import typing as npt
@@ -617,20 +619,10 @@ def make_raw_phrase_df(
         new_index, ["phrase_id", "phrase_component"]
     )
     # ToDo: add to documentation the fact that the duration of terminal harmonies is not amended. This allows for
-    # inspecting the duratioin of the last harmony but leads to the fact that the summed duration of all phrases in a
+    # inspecting the duration of the last harmony but leads to the fact that the summed duration of all phrases in a
     # piece may be longer than the piece itself, namely when a long terminal harmony is 'interrupted' by the beginning
     # of the next phrase: the following code duplicates the duration following the {
-    updated_durations = (
-        phrase_df.quarterbeats.shift(-1) - phrase_df.quarterbeats
-    ).astype(float)
-    updated_duration_qb_column = phrase_df.duration_qb.where(
-        components_lasts, updated_durations
-    )
-    updated_mask = updated_duration_qb_column != phrase_df.duration_qb
-    logger.debug(
-        f"{updated_mask.sum()} values have been updated in the 'duration_qb' for phrase annotations."
-    )
-    phrase_df.duration_qb = updated_duration_qb_column
+    update_duration_qb(phrase_df, ~components_lasts, logger)
     return phrase_df
 
 
@@ -823,16 +815,7 @@ class MuseScoreHarmonies(MuseScoreFacet, AnnotationsFacet):
                 if issubclass(cls, PhraseAnnotations):
                     missing_mask = feature_df.chord.isna()
                     groupby_levels = feature_df.index.names[:-1]
-                    group_start_idx = np.array(
-                        [
-                            idx[0]
-                            for idx in feature_df.groupby(
-                                groupby_levels
-                            ).indices.values()
-                        ]
-                    )
-                    group_start_mask = np.zeros_like(missing_mask, bool)
-                    group_start_mask[group_start_idx] = True
+                    group_start_mask = make_group_start_mask(feature_df, groupby_levels)
                     feature_df.loc[missing_mask, ["chord_tones", "added_tones"]] = pd.NA
                     ffill_mask = missing_mask | (
                         missing_mask.shift(-1).fillna(False) & ~group_start_mask

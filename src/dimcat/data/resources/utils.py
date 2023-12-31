@@ -1005,6 +1005,16 @@ def make_frictionless_schema_descriptor(
     return descriptor
 
 
+def make_group_start_mask(df: D, groupby) -> npt.NDArray[bool]:
+    """Returns a boolean mask where the beginning of each group is marked with True. This is useful only when the
+    groups already came in groups within the dataframe in the first place.
+    """
+    group_start_idx = np.array([idx[0] for idx in df.groupby(groupby).indices.values()])
+    group_start_mask = np.zeros(len(df), bool)
+    group_start_mask[group_start_idx] = True
+    return group_start_mask
+
+
 def make_index_from_grouping_dict(
     grouping: Dict[str, Iterable[tuple]],
     level_names=("group_name", "corpus", "piece"),
@@ -1415,6 +1425,31 @@ def tuple2str(
     if keep_parentheses:
         return f"({result})"
     return result
+
+
+def update_duration_qb(
+    df: D,
+    update_mask: Optional[npt.NDArray[bool]] = None,
+    logger: Optional[logging.Logger] = None,
+) -> None:
+    """Replaces the 'duration_qb' column in the given DataFrame with a new one that updates the values by subtracting
+    subsequent 'quarterbeats' values. If ``update_mask`` is specified, only values for which the mask is True are
+    updated. Otherwise, all values are updated.
+    """
+    if logger is None:
+        logger = module_logger
+    updated_durations = (df.quarterbeats.shift(-1) - df.quarterbeats).astype(float)
+    if update_mask is None:
+        updated_duration_qb_column = updated_durations
+    else:
+        updated_duration_qb_column = updated_durations.where(
+            update_mask, df.duration_qb
+        )
+    updated_mask = updated_duration_qb_column != df.duration_qb
+    logger.debug(
+        f"{updated_mask.sum()} values have been updated in the 'duration_qb' for phrase annotations."
+    )
+    df.duration_qb = updated_duration_qb_column
 
 
 def value2bool(value: str | float | int | bool) -> bool | str | float | int:
