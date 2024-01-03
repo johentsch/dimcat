@@ -1477,7 +1477,7 @@ def update_duration_qb(
     logger.debug(
         f"{updated_mask.sum()} values have been updated in the 'duration_qb' for phrase annotations."
     )
-    df.duration_qb = updated_duration_qb_column
+    df.loc[:, "duration_qb"] = updated_duration_qb_column
 
 
 def value2bool(value: str | float | int | bool) -> bool | str | float | int:

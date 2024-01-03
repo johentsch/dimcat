@@ -14,6 +14,7 @@ from typing import (
     Iterable,
     List,
     Literal,
+    MutableMapping,
     Optional,
     Sequence,
     Tuple,
@@ -26,7 +27,13 @@ import marshmallow as mm
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-from dimcat.base import FriendlyEnum, LowercaseEnum, ObjectEnum, get_setting
+from dimcat.base import (
+    FriendlyEnum,
+    LowercaseEnum,
+    ObjectEnum,
+    deserialize_dict,
+    get_setting,
+)
 from dimcat.dc_exceptions import UnknownFormat
 from dimcat.plotting import (
     CADENCE_COLORS,
@@ -249,7 +256,8 @@ class Result(DimcatResource):
             format=format,
         )
         # self._formatted_column and self._value_column are already set by super().__init__()
-        self.analyzed_resource: DimcatResource = analyzed_resource
+        self._analyzed_resource: DimcatResource = None
+        self.analyzed_resource = analyzed_resource
         self.value_column = value_column
         self.dimension_column: Optional[str] = dimension_column
         """Name of the column containing some dimension, e.g. to be interpreted as quantity (durations, counts,
@@ -258,6 +266,20 @@ class Result(DimcatResource):
         self.is_combination = False
         """Is True if this Result has been created by Result.combine_results(), in which case the method will return
         :attr:`df` as is (without combining anything)."""
+
+    @property
+    def analyzed_resource(self) -> DimcatResource:
+        return self._analyzed_resource
+
+    @analyzed_resource.setter
+    def analyzed_resource(self, analyzed_resource: DimcatResource | MutableMapping):
+        if isinstance(analyzed_resource, MutableMapping):
+            analyzed_resource = deserialize_dict(analyzed_resource)
+        elif not isinstance(analyzed_resource, DimcatResource):
+            raise TypeError(
+                f"analyzed_resource must be a DimcatResource, not {type(analyzed_resource)}"
+            )
+        self._analyzed_resource = analyzed_resource
 
     @property
     def feature_columns(self) -> List[str]:
@@ -390,7 +412,7 @@ class Result(DimcatResource):
         combined_results = self._combine_results(
             group_cols=group_cols, sort_order=sort_order
         )
-        new_result = self.__class__.from_resource_and_dataframe(
+        new_result = self.from_resource_and_dataframe(
             self,
             combined_results,
             default_groupby=group_cols,
@@ -1827,7 +1849,7 @@ class NgramTable(Result):
             terminal_symbols=terminal_symbols,
             context_columns=context_columns,
         )
-        return self.__class__.from_resource_and_dataframe(resource=self, df=df)
+        return self.from_resource_and_dataframe(resource=self, df=df)
 
     def make_ngram_tuples(
         self,
@@ -2231,7 +2253,7 @@ class PhraseData(Result):
             A reindexed copy of the phrase data.
         """
         phrase_data = self._regroup_phrases(grouping=grouping, level_names=level_names)
-        return self.__class__.from_resource_and_dataframe(
+        return self.from_resource_and_dataframe(
             resource=self,
             df=phrase_data,
         )

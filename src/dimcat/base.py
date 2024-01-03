@@ -98,6 +98,17 @@ class DimcatSchema(mm.Schema):
 
     @mm.pre_dump()
     def assert_type(self, obj, **kwargs):
+        """If this fails, typically, a property of a DimcatObject does not have the type expected by the relevant field.
+        To find out which one, you can use
+
+        .. code-block:: python
+
+           for attr_name, field_obj in schema.dump_fields.items():
+               value = field_obj.serialize(attr_name, obj)
+
+        (copied from marshmallow.schema._serialize()) where ``obj`` is the object to be serialized by ``schema``.
+
+        """
         if not isinstance(obj, DimcatObject):
             raise mm.ValidationError(
                 f"{self.name}: The object to be serialized needs to be a DimcatObject, not a {type(obj)!r}."
