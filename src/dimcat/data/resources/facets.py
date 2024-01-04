@@ -243,35 +243,36 @@ def extend_harmony_feature(
         )
     if "relativeroot_resolved" not in feature_df.columns:
         concatenate_this.append(
-            (
-                relativeroot_resolved := ms3.transform(
-                    feature_df,
-                    ms3.resolve_relative_keys,
-                    ["relativeroot", "localkey_is_minor"],
-                ).rename("relativeroot_resolved")
-            )
+            ms3.transform(
+                feature_df,
+                ms3.resolve_relative_keys,
+                ["relativeroot", "localkey_is_minor"],
+            ).rename("relativeroot_resolved")
         )
-    else:
-        relativeroot_resolved = feature_df.relativeroot_resolved
     if "effective_localkey" not in feature_df.columns:
-        relativeroot_and_localkey = (relativeroot_resolved + "/").fillna(
-            ""
-        ) + feature_df.localkey_resolved
-        relativeroot_and_localkey = pd.concat(
-            [relativeroot_and_localkey, feature_df.globalkey_is_minor], axis=1
-        )
         concatenate_this.append(
             (
-                effective_localkey := ms3.transform(
-                    relativeroot_and_localkey, ms3.resolve_relative_keys
+                effective_localkey := (
+                    (feature_df.relativeroot + "/").fillna("")
+                    + feature_df.localkey_resolved
                 ).rename("effective_localkey")
             )
         )
+        effective_localkey_and_mode = pd.concat(
+            [effective_localkey, feature_df.globalkey_is_minor], axis=1
+        )
+        concatenate_this.append(
+            (
+                effective_localkey_resolved := ms3.transform(
+                    effective_localkey_and_mode, ms3.resolve_relative_keys
+                ).rename("effective_localkey_resolved")
+            )
+        )
     else:
-        effective_localkey = feature_df.effective_localkey
+        effective_localkey_resolved = feature_df.effective_localkey_resolved
     if "effective_localkey_is_minor" not in feature_df.columns:
         concatenate_this.append(
-            effective_localkey.str.islower()
+            effective_localkey_resolved.str.islower()
             .fillna(feature_df.localkey_is_minor)
             .rename("effective_localkey_is_minor")
         )

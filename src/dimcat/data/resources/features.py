@@ -140,8 +140,10 @@ CHORD_TONE_SCALE_DEGREES_COLUMNS = [
 HARMONY_FEATURE_COLUMNS = [
     "root_roman",  # numeral/relativeroot
     "relativeroot_resolved",
-    "effective_localkey",  # relativeroot_resolved resolved against localkey
-    "effective_localkey_is_minor" "pedal_resolved",
+    "effective_localkey",  # relativeroot/localkey (combined)
+    "effective_localkey_resolved",  # relativeroot_resolved resolved against localkey
+    "effective_localkey_is_minor",
+    "pedal_resolved",
     "chord_and_mode",
     "chord_reduced",  # without parentheses ('changes')
     "chord_reduced_and_mode",
