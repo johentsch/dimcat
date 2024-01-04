@@ -2216,7 +2216,7 @@ class PhraseData(Result):
         phrase_start_mask = self._get_phrase_start_mask()
         assert len(grouping.shape) == 1, "Expecting a Series."
         substage_start_mask = (
-            (grouping != grouping.shift()).fillna(True).to_numpy()
+            (grouping != grouping.shift()).fillna(True).to_numpy(dtype=bool)
         ) | phrase_start_mask
         substage_level = make_range_index_from_boolean_mask(substage_start_mask)
         # make new stage level that restarts at phrase starts and increments at substage starts
