@@ -934,7 +934,7 @@ def make_boolean_mask_from_set_of_tuples(
         levels:
 
             * If None, the first n levels of the index are used, where n is the length of the selection tuples.
-            * If an iterable of integers, they are interpreted as level positions and used to create for each row a
+            * If an iterable of level name strings or level position integers, they are used to create for each row a
               tuple to compare against the selected tuples.
 
     Returns:
@@ -1410,6 +1410,36 @@ def store_json(
 def str2inttuple(s):
     """Non-strict version of :func:`ms3.str2inttuple` which does not fail on non-integer values."""
     return ms3.str2inttuple(s, strict=False)
+
+
+def subselect_multiindex_from_df(
+    df: D,
+    tuples: DimcatIndex | Iterable[tuple],
+    levels: Optional[int | str | List[int | str]] = None,
+) -> pd.DataFrame:
+    """Returns a copy of a subselection of the dataframe based on the union of its index tuples (or subtuples)
+    and the given tuples.
+
+    Args:
+        df: Dataframe of which to return a subset of rows.
+        tuples: Tuples to match against df's MultiIndex. Can be a MultiIndex because set(tuples) works on that, too.
+        levels:
+
+            * If None, the first n levels of the index are used, where n is the length of the selection tuples.
+            * If an iterable of level name strings or level position integers, they are used to create for each row a
+              tuple to compare against the selected tuples.
+
+    Returns:
+
+    """
+    tuple_set = set(tuples)
+    random_tuple = next(iter(tuple_set))
+    if not isinstance(random_tuple, tuple):
+        raise TypeError(
+            f"Pass an iterable of tuples. A randomly selected element had type {type(random_tuple)!r}."
+        )
+    mask = make_boolean_mask_from_set_of_tuples(df.index, tuple_set, levels)
+    return df[mask].copy()
 
 
 def tuple2str(
