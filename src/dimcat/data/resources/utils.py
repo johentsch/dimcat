@@ -882,12 +882,16 @@ def make_adjacency_groups(
     logger: Optional[logging.Logger] = None,
 ) -> Tuple[pd.Series, Dict[int, Any]]:
     """Turns a Series into a Series of ascending integers starting from 1 that reflect groups of successive
-    equal values. There are several options of how to deal with NA values.
+    equal values.
 
     This is a simplified variant of ms3.adjacency_groups()
 
     Args:
       S: Series in which to group identical adjacent values with each other.
+      groupby:
+        If not None, the resulting grouper will start new adjacency groups according to this groupby.
+        This is a way, for example, to ensure no group overlaps piece boundaries even if there are
+        adjacent identical values.
 
     Returns:
       A series with increasing integers that can be used for grouping.
@@ -1591,7 +1595,7 @@ def make_range_index_from_boolean_mask(
 
     # ensure the same behaviour regardless of the value of the first element
     increments[0] = 0  # always start counting at 0
-    if reset_index[0] != 0:
+    if len(reset_index) == 0 or reset_index[0] != 0:
         np.insert(reset_index, 0, 0)
 
     if outer_start_mask is None:
