@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-from typing import Iterable, List, Optional
+from typing import Iterable, List, Literal, Optional
 
 import marshmallow as mm
 from dimcat.base import FriendlyEnumField, ListOfStringsField
 from dimcat.data.resources import Feature, FeatureName
 from dimcat.data.resources.base import DR, SomeSeries
 from dimcat.data.resources.dc import FeatureSpecs, UnitOfAnalysis
+from dimcat.data.resources.features import PhraseComponentName
 from dimcat.data.resources.results import PhraseData, PhraseDataFormat
 from dimcat.data.resources.utils import (
-    make_boolean_mask_from_set_of_tuples,
-    phraseComponents,
+    drop_duplicated_ultima_rows,
+    subselect_multiindex_from_df,
     transform_phrase_data,
 )
 from dimcat.steps.analyzers.base import Analyzer, DispatchStrategy
@@ -35,17 +36,23 @@ class PhraseDataAnalyzer(Analyzer):
         level_name = mm.fields.Str(metadata=dict(expose=False))
         format = FriendlyEnumField(PhraseDataFormat, metadata=dict(expose=False))
         drop_levels = mm.fields.Raw(metadata=dict(expose=False))
+        drop_duplicated_ultima_rows = mm.fields.Bool(
+            allow_none=True, metadata=dict(expose=False)
+        )
 
     def __init__(
         self,
         features: Optional[FeatureSpecs | Iterable[FeatureSpecs]] = None,
         columns: str | List[str] = "label",
-        components: phraseComponents | List[phraseComponents] = "body",
+        components: PhraseComponentName
+        | Literal["phrase"]
+        | Iterable[PhraseComponentName] = "body",
         query: Optional[str] = None,
         reverse: bool = False,
         level_name: str = "i",
         format: PhraseDataFormat = PhraseDataFormat.LONG,
         drop_levels: bool | int | str | Iterable[int | str] = False,
+        drop_duplicated_ultima_rows: bool = False,
         strategy: DispatchStrategy = DispatchStrategy.GROUPBY_APPLY,
         smallest_unit: UnitOfAnalysis = UnitOfAnalysis.SLICE,
         dimension_column: str = None,
@@ -60,6 +67,8 @@ class PhraseDataAnalyzer(Analyzer):
                 Column(s) to include in the result.
             components:
                 Which of the four phrase components to include, ∈ {'ante', 'body', 'codetta', 'post'}.
+                For convenience, the string 'phrase' is also accepted, which is equivalent to ["body", "codetta"] and
+                ``drop_duplicated_ultima_rows=True``.
             query:
                 A convenient way to include only those phrases in the result that match the criteria
                 formulated in the string query. A query is a string and generally takes the form
@@ -86,6 +95,14 @@ class PhraseDataAnalyzer(Analyzer):
                 integer) value(s) must be valid and cause one of the index levels to be dropped.
                 ``level_name`` cannot be dropped. Dropping 'phrase_id' will likely lead to an
                 exception if a :class:`PhraseData` object will be displayed in WIDE format.
+            drop_duplicated_ultima_rows:
+                The default behaviour (when None), depends on the value of ``components``: If you set
+                ``components='phrase'``, this setting defaults to True, otherwise to False; where
+                False corresponds to the default where  each phrase body ends on a duplicate of the
+                phrase's ultima label, with zero-duration, enabling the creation of PhraseData
+                containing only phrase bodies (i.e., ``components='body'``), without losing information
+                about the ultima label. When analyzing entire phrases, however, these duplicate
+                rows may be unwanted and can be dropped by setting this option to True.
             strategy: Currently, only the default strategy GROUPBY_APPLY is implemented.
             smallest_unit:
                 The smallest unit to consider for analysis. Defaults to SLICE, meaning that slice segments are analyzed
@@ -108,6 +125,7 @@ class PhraseDataAnalyzer(Analyzer):
         self._drop_levels = None
         self._format = None
         self.drop_levels: bool | int | str | Iterable[int | str] = drop_levels
+        self.drop_duplicated_ultima_rows: bool = drop_duplicated_ultima_rows
         self.query: str = query
         self.reverse: bool = reverse
         self.level_name: str = level_name
@@ -130,17 +148,32 @@ class PhraseDataAnalyzer(Analyzer):
         self._columns = columns
 
     @property
-    def components(self) -> List[phraseComponents]:
+    def components(self) -> List[PhraseComponentName]:
         return list(self._components)
 
     @components.setter
-    def components(self, components: phraseComponents | List[phraseComponents]):
+    def components(
+        self,
+        components: PhraseComponentName
+        | Literal["phrase"]
+        | Iterable[PhraseComponentName],
+    ):
         if components is None:
             raise ValueError("components cannot be None")
         if isinstance(components, str):
             components = [components]
         else:
             components = list(components)
+        if any(c.lower() == "phrase" for c in components):
+            assert len(components) == 1, (
+                "If you use the convenience value 'phrase', it must be the "
+                "only component and will be converted to ['body', 'codetta']"
+            )
+            components = ["body", "codetta"]
+            if self.drop_duplicated_ultima_rows is None:
+                self.drop_duplicated_ultima_rows = True
+        else:
+            components = [PhraseComponentName(c).value for c in components]
         self._components = components
 
     @property
@@ -153,6 +186,8 @@ class PhraseDataAnalyzer(Analyzer):
 
     def groupby_apply(self, feature: Feature, groupby: SomeSeries = None, **kwargs):
         phrase_df = feature.phrase_df
+        if self.drop_duplicated_ultima_rows:
+            phrase_df = drop_duplicated_ultima_rows(phrase_df)
         if self.query:
             if feature.name == "PhraseAnnotations":
                 phrase_df = phrase_df.query(self.query)
@@ -161,11 +196,12 @@ class PhraseDataAnalyzer(Analyzer):
                 # then the phrase_df (which corresponds to a PhraseAnnotations dataframe) is filtered based on the
                 # result
                 filtered_df = feature.df.query(self.query)
-                idx = filtered_df.index
-                mask = make_boolean_mask_from_set_of_tuples(
-                    phrase_df.index, set(idx), idx.names
-                )
-                phrase_df = phrase_df[mask]
+                # idx = filtered_df.index
+                # mask = make_boolean_mask_from_set_of_tuples(
+                #     phrase_df.index, set(idx), idx.names
+                # )
+                # phrase_df = phrase_df[mask]
+                phrase_df = subselect_multiindex_from_df(phrase_df, filtered_df.index)
         phrase_data = transform_phrase_data(
             phrase_df=phrase_df,
             columns=self.columns,

@@ -11,6 +11,7 @@ from dimcat.data.resources.features import (
     CadenceLabelFormat,
     HarmonyLabelsFormat,
     NotesFormat,
+    PhraseComponentName,
 )
 from dimcat.data.resources.results import (
     NgramTableFormat,
@@ -42,6 +43,7 @@ __all__ = [
     ObjectEnum,
     PackageMode,
     PackageStatus,
+    PhraseComponentName,
     PhraseDataFormat,
     Playthrough,
     ResultName,

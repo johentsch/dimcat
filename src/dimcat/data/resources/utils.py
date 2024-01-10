@@ -1047,6 +1047,18 @@ def make_group_start_mask(df: D, groupby) -> npt.NDArray[bool]:
     return group_start_mask
 
 
+def make_groups_lasts_mask(feature_df: D, groupby) -> npt.NDArray[bool]:
+    """Returns a boolean mask where each row that comes last in one of the groups is marked as True. This is
+    useful only when the groups already came in groups within the dataframe in the first place.
+    """
+    groups_last_idx = np.array(
+        [idx[-1] for idx in feature_df.groupby(groupby).indices.values()]
+    )
+    result = np.zeros(feature_df.shape[0], bool)
+    result[groups_last_idx] = True
+    return result
+
+
 def make_index_from_grouping_dict(
     grouping: Dict[str, Iterable[tuple]],
     level_names=("group_name", "corpus", "piece"),
@@ -1543,8 +1555,6 @@ def value2bool(value: str | float | int | bool) -> bool | str | float | int:
 
 # region PhraseData helpers
 
-phraseComponents: TypeAlias = Literal["ante", "body", "codetta", "post"]
-
 
 def append_index_levels(
     old_index: IX,
@@ -1683,6 +1693,24 @@ def regroup_phrase_stages(
     result_df = pd.concat([grouping, df], axis=1)
     result_df.index = append_index_levels(result_df.index, new_index, drop_levels=-1)
     return result_df
+
+
+def drop_duplicated_ultima_rows(phrase_annotations_df: D) -> D:
+    """Used by the :class:`PhraseDataAnalyzer` to drop the last row of each phrase's body component when
+    ``drop_duplicated_ultima_rows`` is True.
+    """
+    groups_last_mask = make_groups_lasts_mask(
+        phrase_annotations_df, ["phrase_id", "phrase_component"]
+    )
+    body_mask = (
+        phrase_annotations_df.index.get_level_values("phrase_component").to_numpy()
+        == "body"
+    )
+    body_last_row_mask = body_mask & groups_last_mask
+    return phrase_annotations_df[~body_last_row_mask].copy()
+
+
+phraseComponents: TypeAlias = Literal["ante", "body", "codetta", "post"]
 
 
 def transform_phrase_data(

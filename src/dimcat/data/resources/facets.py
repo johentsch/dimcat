@@ -29,6 +29,7 @@ from dimcat.data.resources.utils import (
     drop_rows_with_missing_values,
     make_adjacency_groups,
     make_group_start_mask,
+    make_groups_lasts_mask,
     safe_row_tuple,
     tuple2str,
     update_duration_qb,
@@ -367,16 +368,6 @@ def _get_body_start_positions_from_raw_phrases(phrase_df: D) -> List[int]:
     return body_start_positions
 
 
-def _get_boolean_mask_for_groups_last(feature_df: D, groupby) -> npt.NDArray[bool]:
-    """Returns a boolean mask where each row that comes last in one of the groups is marked as True."""
-    groups_last_idx = np.array(
-        [idx[-1] for idx in feature_df.groupby(groupby).indices.values()]
-    )
-    result = np.zeros(feature_df.shape[0], bool)
-    result[groups_last_idx] = True
-    return result
-
-
 def _get_index_intervals_for_phrases(
     markers: S,
     n_ante: int = 0,
@@ -617,14 +608,16 @@ def make_raw_phrase_df(
     body_end_positions = _get_body_end_positions_from_raw_phrases(new_index)
     duration_col_position = phrase_df.columns.get_loc("duration_qb")
     phrase_df.iloc[body_end_positions, duration_col_position] = 0.0
-    components_lasts = _get_boolean_mask_for_groups_last(
+    components_lasts = make_groups_lasts_mask(
         new_index, ["phrase_id", "phrase_component"]
     )
     # ToDo: add to documentation the fact that the duration of terminal harmonies is not amended. This allows for
     # inspecting the duration of the last harmony but leads to the fact that the summed duration of all phrases in a
     # piece may be longer than the piece itself, namely when a long terminal harmony is 'interrupted' by the beginning
     # of the next phrase: the following code duplicates the duration following the {
-    update_duration_qb(phrase_df, ~components_lasts, logger)
+    update_duration_qb(
+        phrase_df, ~components_lasts, logger
+    )  # ToDo: check 0-durations in codetta, e.g. for } labels
     return phrase_df
 
 

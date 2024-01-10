@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import itertools
 import logging
-from typing import Callable, Hashable, Iterable, List, Optional
+from typing import Callable, Hashable, Iterable, List, Literal, Optional
 
 import frictionless as fl
 import marshmallow as mm
@@ -25,7 +25,6 @@ from dimcat.data.resources.utils import (
     get_corpus_display_name,
     join_df_on_index,
     merge_ties,
-    phraseComponents,
     safe_row_tuple,
 )
 from dimcat.dc_exceptions import (
@@ -869,12 +868,15 @@ class PhraseAnnotations(HarmonyLabels):
     def get_phrase_data(
         self,
         columns: str | List[str] = "label",
-        components: phraseComponents | List[phraseComponents] = "body",
+        components: PhraseComponentName
+        | Literal["phrase"]
+        | Iterable[PhraseComponentName] = "body",
         query: Optional[str] = None,
         reverse: bool = False,
         level_name: str = "i",
         wide_format: bool = False,
         drop_levels: bool | int | str | Iterable[int | str] = False,
+        drop_duplicated_ultima_rows: Optional[bool] = None,
     ) -> PhraseData:
         """
 
@@ -883,6 +885,8 @@ class PhraseAnnotations(HarmonyLabels):
                 Column(s) to include in the result.
             components:
                 Which of the four phrase components to include, ∈ {'ante', 'body', 'codetta', 'post'}.
+                For convenience, the string 'phrase' is also accepted, which is equivalent to ["body", "codetta"] and
+                ``drop_duplicated_ultima_rows=True``.
             query:
                 A convenient way to include only those phrases in the result that match the criteria
                 formulated in the string query. A query is a string and generally takes the form
@@ -911,6 +915,14 @@ class PhraseAnnotations(HarmonyLabels):
                 integer) value(s) must be valid and cause one of the index levels to be dropped.
                 ``level_name`` cannot be dropped. Dropping 'phrase_id' will likely lead to an
                 exception if a :class:`PhraseData` object will be displayed in WIDE format.
+            drop_duplicated_ultima_rows:
+                The default behaviour (when None), depends on the value of ``components``: If you set
+                ``components='phrase'``, this setting defaults to True, otherwise to False; where
+                False corresponds to the default where  each phrase body ends on a duplicate of the
+                phrase's ultima label, with zero-duration, enabling the creation of PhraseData
+                containing only phrase bodies (i.e., ``components='body'``), without losing information
+                about the ultima label. When analyzing entire phrases, however, these duplicate
+                rows may be unwanted and can be dropped by setting this option to True.
 
         Returns:
             Dataframe representing partial information on the selected phrases in long or wide format.
@@ -925,6 +937,7 @@ class PhraseAnnotations(HarmonyLabels):
             level_name=level_name,
             format=df_format,
             drop_levels=drop_levels,
+            drop_duplicated_ultima_rows=drop_duplicated_ultima_rows,
         )
         return self.apply_step(analyzer)
 
@@ -938,6 +951,13 @@ class PhraseAnnotations(HarmonyLabels):
         """
         self._phrase_df = feature_df
         return feature_df
+
+
+class PhraseComponentName(FriendlyEnum):
+    ANTE = "ante"
+    BODY = "body"
+    CODETTA = "codetta"
+    POST = "post"
 
 
 class PhraseComponents(PhraseAnnotations):
