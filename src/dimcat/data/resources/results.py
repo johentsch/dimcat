@@ -28,6 +28,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 from dimcat.base import (
+    DimcatObjectField,
     FriendlyEnum,
     LowercaseEnum,
     ObjectEnum,
@@ -207,10 +208,26 @@ class Result(DimcatResource):
     columns to determine how the data will be grouped for the plot."""
 
     class Schema(DimcatResource.Schema):
-        analyzed_resource = mm.fields.Nested(DimcatResource.Schema, required=True)
-        value_column = mm.fields.Str(required=True)
-        dimension_column = mm.fields.Str(required=True)
-        formatted_column = mm.fields.Str(allow_none=True)
+        analyzed_resource = DimcatObjectField()
+        value_column = mm.fields.Str(
+            required=True,
+            metadata=dict(
+                description="Name of the column containing the values, relevant, e.g., for tallies."
+            ),
+        )
+        dimension_column = mm.fields.Str(
+            allow_none=True,
+            metadata=dict(
+                description="Name of the column containing some dimension, e.g. to be interpreted as quantity "
+                "(durations, counts, etc.). Not all results have one, e.g. NgramTable."
+            ),
+        )
+        formatted_column = mm.fields.Str(
+            allow_none=True,
+            metadata=dict(
+                description="Name of the column containing the formatted values, typically for display on the x_axis."
+            ),
+        )
 
     def __init__(
         self,
