@@ -1083,6 +1083,13 @@ def make_index_from_grouping_dict(
     return pd.MultiIndex.from_tuples(index_tuples, names=level_names)
 
 
+def make_phrase_start_mask(df) -> npt.NDArray[bool]:
+    """Based on the "phrase_id" index level, make a mask that is True for the first row of each mask."""
+    phrase_ids = df.index.get_level_values("phrase_id").to_numpy()
+    phrase_start_mask = phrase_ids != np.roll(phrase_ids, 1)
+    return phrase_start_mask
+
+
 def make_tsv_resource(name: Optional[str] = None) -> fl.Resource:
     """Returns a frictionless.Resource with the default properties of a TSV file stored to disk."""
     tsv_dialect = fl.Dialect.from_options(
@@ -1437,6 +1444,8 @@ def subselect_multiindex_from_df(
 
     """
     tuple_set = set(tuples)
+    if not len(tuple_set):
+        raise ValueError("Received 0 tuples")
     random_tuple = next(iter(tuple_set))
     if not isinstance(random_tuple, tuple):
         raise TypeError(
@@ -1613,6 +1622,30 @@ def make_range_index_from_boolean_mask(
     return increments
 
 
+def make_regrouped_stage_index(
+    df: D,
+    grouping: S,
+    level_names: Tuple[str, str] = ("stage", "substage"),
+) -> D:
+    """Returns a dataframe that corresponds to the two new (stage) index levels that :func:`regroup_phrase_stages`
+    incorporates.
+    """
+    assert len(grouping.shape) == 1, "Expecting a Series."
+    phrase_start_mask = make_phrase_start_mask(df)
+    substage_start_mask = (
+        (grouping != grouping.shift()).fillna(True).to_numpy(dtype=bool)
+    ) | phrase_start_mask
+    substage_level = make_range_index_from_boolean_mask(substage_start_mask)
+    # make new stage level that restarts at phrase starts and increments at substage starts
+    stage_level = make_range_index_from_boolean_mask(
+        substage_start_mask, phrase_start_mask
+    )
+    # create index levels as dataframe in order to concatenate them to existing levels
+    primary, secondary = level_names
+    new_index = pd.DataFrame({primary: stage_level, secondary: substage_level})
+    return new_index
+
+
 def make_multiindex_for_unstack(idx: pd.Index, level_name: str = "i") -> pd.MultiIndex:
     """Turns an index that contains adjacency groups (adjacent entries having the same value) into
     a 2-level MultiIndex where the new level represents an individual integer range for each group,
@@ -1624,6 +1657,32 @@ def make_multiindex_for_unstack(idx: pd.Index, level_name: str = "i") -> pd.Mult
         [idx, groupwise_ranges], names=[old_level_name, level_name]
     )
     return result
+
+
+def regroup_phrase_stages(
+    df: D,
+    grouping: S,
+    level_names: Tuple[str, str] = ("stage", "substage"),
+):
+    """Insert a grouping column and replace the last index level with a new primary and secondary index accordingly.
+    The primary level increments at the beginning of each group, the secondary level increments at every row,
+    restarting at the beginning of each group. For example, a grouping ["a", "a", "a", "b", "c", "c"] results
+    in the index [(0, 0), (0, 1), (0, 2), (1, 0), (2, 0), (2, 1)].
+
+
+    Args:
+        grouping:
+            A Series with the same index as the (raw) phrase_df, containing the grouping criterion. Adjacent equal
+            values are grouped together.
+        level_names: Names of the two index levels.
+
+    Returns:
+        A reindexed copy of the phrase data.
+    """
+    new_index = make_regrouped_stage_index(df, grouping, level_names)
+    result_df = pd.concat([grouping, df], axis=1)
+    result_df.index = append_index_levels(result_df.index, new_index, drop_levels=-1)
+    return result_df
 
 
 def transform_phrase_data(

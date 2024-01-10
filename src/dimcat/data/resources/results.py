@@ -57,11 +57,7 @@ from typing_extensions import Self
 
 from .base import D, S
 from .dc import DimcatResource, UnitOfAnalysis
-from .utils import (
-    append_index_levels,
-    make_range_index_from_boolean_mask,
-    merge_columns_into_one,
-)
+from .utils import make_phrase_start_mask, merge_columns_into_one, regroup_phrase_stages
 
 module_logger = logging.getLogger(__name__)
 
@@ -2230,24 +2226,8 @@ class PhraseData(Result):
         Returns:
             A reindexed copy of the phrase data.
         """
-        phrase_start_mask = self._get_phrase_start_mask()
-        assert len(grouping.shape) == 1, "Expecting a Series."
-        substage_start_mask = (
-            (grouping != grouping.shift()).fillna(True).to_numpy(dtype=bool)
-        ) | phrase_start_mask
-        substage_level = make_range_index_from_boolean_mask(substage_start_mask)
-        # make new stage level that restarts at phrase starts and increments at substage starts
-        stage_level = make_range_index_from_boolean_mask(
-            substage_start_mask, phrase_start_mask
-        )
-        # create index levels as dataframe in order to concatenate them to existing levels
-        primary, secondary = level_names
-        new_index = pd.DataFrame({primary: stage_level, secondary: substage_level})
-        result_df = pd.concat([grouping, self.dataframe], axis=1)
-        result_df.index = append_index_levels(
-            result_df.index, new_index, drop_levels=-1
-        )
-        return result_df
+        df = self.dataframe
+        return regroup_phrase_stages(df, grouping, level_names)
 
     def regroup_phrases(
         self,
@@ -2277,9 +2257,8 @@ class PhraseData(Result):
 
     def _get_phrase_start_mask(self) -> npt.NDArray[bool]:
         """Returns a boolean array that is True for each row in which a new phrase starts."""
-        phrase_ids = self.dataframe.index.get_level_values("phrase_id").to_numpy()
-        phrase_start_mask = phrase_ids != np.roll(phrase_ids, 1)
-        return phrase_start_mask
+        df = self.dataframe
+        return make_phrase_start_mask(df)
 
     def _combine_results(
         self,
