@@ -949,22 +949,25 @@ class Result(DimcatResource):
         combined_result: D,
         group_cols: List[str],
         sort_order: Optional[SortOrder] = SortOrder.DESCENDING,
+        sort_column: Optional[str] = None,
     ):
         if sort_order is None or sort_order == SortOrder.NONE:
             return combined_result
+        if sort_column is None:
+            sort_column = self.y_column
         if not group_cols:
             # no grouping required
             if sort_order == SortOrder.ASCENDING:
-                return combined_result.sort_values(self.y_column)
+                return combined_result.sort_values(sort_column)
             else:
-                return combined_result.sort_values(self.y_column, ascending=False)
+                return combined_result.sort_values(sort_column, ascending=False)
         if sort_order == SortOrder.ASCENDING:
             return combined_result.groupby(group_cols, group_keys=False).apply(
-                lambda df: df.sort_values(self.y_column)
+                lambda df: df.sort_values(sort_column)
             )
         else:
             return combined_result.groupby(group_cols, group_keys=False).apply(
-                lambda df: df.sort_values(self.y_column, ascending=False)
+                lambda df: df.sort_values(sort_column, ascending=False)
             )
 
 
@@ -2014,7 +2017,7 @@ class NgramTable(Result):
         """Retrieve the specified columns for the specified n-gram level ('a, 'b', etc.) from the NgramTable."""
         return_series = False
         if columns is None and not any(
-            col in self.df.columns for col in self.feature_columns
+            col in self.df.columns.levels[1] for col in self.feature_columns
         ):
             # default to all available columns
             column_names = [col for col in self.df.columns if col[0] == level]
@@ -2125,6 +2128,31 @@ class NgramTuples(Result):
     """Result that has a :attr:`value_column` containing tuples and no `dimension_column`."""
 
     _default_analyzer = "Counter"
+
+    def _combine_results(
+        self,
+        group_cols: Optional[
+            UnitOfAnalysis | str | Iterable[str]
+        ] = UnitOfAnalysis.GROUP,
+        sort_order: Optional[SortOrder] = SortOrder.DESCENDING,
+    ) -> D:
+        raise NotImplementedError(
+            "NgramTuples does not support this action. Try .get_default_analysis()." ""
+        )
+
+    def combine_results(
+        self,
+        group_cols: Optional[
+            UnitOfAnalysis | str | Iterable[str]
+        ] = UnitOfAnalysis.GROUP,
+        sort_order: Optional[SortOrder] = SortOrder.DESCENDING,
+    ) -> Self:
+        """Convenience method for calling .get_default_analysis().combine_results()."""
+        default_analysis = self.get_default_analysis()
+        return default_analysis.combine_results(
+            group_cols=group_cols,
+            sort_order=sort_order,
+        )
 
     def make_ranking_table(
         self,
