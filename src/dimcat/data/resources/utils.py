@@ -320,7 +320,11 @@ def condense_pedal_points(df):
     overwrite_columns = overwrite_with.columns
     df.loc[pedal_point_start_mask, overwrite_columns] = overwrite_with
     df = df[~pedal_drop_mask]
-    update_duration_qb(df, df.pedal.notna())
+    update_mask = df.pedal.notna() & ~make_groups_lasts_mask(
+        df.index.to_frame(index=False), ["phrase_id", "phrase_component"]
+    )  # this is not a clean solution; re-computation of duration for phrases needs an overhaul in conjunction with
+    # solving the ToDo in facets.make_raw_phrase_df()
+    update_duration_qb(df, update_mask)
     return df
 
 

@@ -617,7 +617,7 @@ def make_raw_phrase_df(
     # of the next phrase: the following code duplicates the duration following the {
     update_duration_qb(
         phrase_df, ~components_lasts, logger
-    )  # ToDo: check 0-durations in codetta, e.g. for } labels
+    )  # ToDo: check 0-durations in codetta, e.g. for } labels; overhaul phrase duration update (condense_pedal_points)
     return phrase_df
 
 
