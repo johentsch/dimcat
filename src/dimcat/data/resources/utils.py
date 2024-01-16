@@ -189,9 +189,34 @@ def apply_slice_intervals_to_resource_df(
     )
     *grouping_levels, slice_name = list(slice_intervals.names)
     interval_index_level = slice_intervals.get_level_values(-1)
-    group2intervals: Dict[tuple, pd.IntervalIndex] = interval_index_level.groupby(
-        slice_intervals.droplevel(-1)
-    )
+    df_index_levels = list(df.index.names)
+    reindex = any(level not in df_index_levels for level in grouping_levels)
+    if reindex:
+        # if the slice_intervals have additional index levels that are not present in df, the slicing is performed
+        # according to levels present in both, and reindexing allows to add the missing levels to the result
+        # note however, that the groupwise operation in the for-loop below assumes that slice intervals are
+        # non-overlapping and monotonically increasing, which is not guaranteed if you ignore grouping levels
+        present_grouping_levels, drop_levels = [], []
+        for i, level in enumerate(grouping_levels):
+            if level in df_index_levels:
+                print(f"{level} is in {df_index_levels}")
+                present_grouping_levels.append(level)
+            else:
+                print(f"{level} is not in {df_index_levels}, drop {i}")
+                drop_levels.append(i)
+        drop_levels.append(-1)
+        grouping_levels = present_grouping_levels
+        group2intervals: Dict[tuple, pd.IntervalIndex] = {
+            group: ix.sort_values()
+            for group, ix in interval_index_level.groupby(
+                slice_intervals.droplevel(drop_levels)
+            ).items()
+        }
+        logger.debug(f"grouping_levels: {grouping_levels}, drop_levels: {drop_levels}")
+    else:
+        group2intervals: Dict[tuple, pd.IntervalIndex] = interval_index_level.groupby(
+            slice_intervals.droplevel(-1)
+        )
 
     sliced_dfs = {}
     for group, group_df in df.groupby(grouping_levels):
@@ -218,7 +243,10 @@ def apply_slice_intervals_to_resource_df(
             duration_column_name=duration_column_name,
             logger=logger,
         )
-    return pd.concat(sliced_dfs, names=grouping_levels)
+    result = pd.concat(sliced_dfs, names=grouping_levels)
+    if reindex:
+        result = join_df_on_index(result, slice_intervals)
+    return result
 
 
 def boolean_is_minor_column_to_mode(S: pd.Series) -> pd.Series:
