@@ -3223,7 +3223,8 @@ class PrevalenceMatrix(Result):
         As a result, each column has a mean of 0 and a standard deviation of 1. The standardization operates
         on relative frequencies so that the prevalences are normalized by the length of each document.
         """
-        return (self.relative - self.relative.mean()) / self.relative.std()
+        # np.std devides by n, pd.std by n-1. We use the former to yield identical results to sklearn's StandardScaler
+        return (self.relative - self.relative.mean()) / np.std(self.relative, axis=0)
 
     def _combine_results(
         self,
@@ -3722,7 +3723,7 @@ class PrevalenceMatrix(Result):
     def type_prevalence(
         self,
         name: str = "type_prevalence",
-    ):
+    ) -> pd.Series:
         return self.df.sum(axis=0).rename(name)
 
 
@@ -3786,7 +3787,7 @@ class RelativePrevalenceMatrix(PrevalenceMatrix):
     def type_prevalence(self) -> S:
         """Raises a TypeError for relative matrices."""
         raise TypeError(
-            "The rows are normalized, so summin the columns would be meaningless."
+            "The rows are normalized, so summing the columns would be meaningless."
         )
 
 
