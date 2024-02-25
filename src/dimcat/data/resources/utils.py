@@ -1726,7 +1726,7 @@ def make_range_index_from_boolean_mask(
         (reset_index,) = np.where(inner_start_mask)
     else:
         increments = np.asarray(
-            inner_start_mask, int
+            inner_start_mask | outer_start_mask, int
         )  # increment only for every True (start)
         (reset_index,) = np.where(outer_start_mask)
 

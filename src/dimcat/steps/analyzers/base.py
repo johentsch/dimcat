@@ -25,6 +25,7 @@ class AnalyzerName(ObjectEnum):
 
     Analyzer = "Analyzer"
     BigramAnalyzer = "BigramAnalyzer"
+    CadenceCounter = "CadenceCounter"
     Counter = "Counter"
     PitchClassVectors = "PitchClassVectors"
     PhraseDataAnalyzer = "PhraseDataAnalyzer"

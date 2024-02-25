@@ -118,7 +118,12 @@ def make_plot_settings(
         width=width,
     )
     if group_cols is not None:
-        update_plot_grouping_settings(plot_settings, group_cols, group_modes)
+        if group_modes is None:
+            warnings.warn(
+                f"group_cols is set to {group_cols!r} but group_modes is None."
+            )
+        else:
+            update_plot_grouping_settings(plot_settings, group_cols, group_modes)
     if "x" not in plot_settings:
         plot_settings["x"] = x_col
     plot_settings["hover_name"] = plot_settings["x"]
