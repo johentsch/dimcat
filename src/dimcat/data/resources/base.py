@@ -1407,6 +1407,7 @@ class FeatureName(ObjectEnum):
     BassNotes = "BassNotes"
     CadenceLabels = "CadenceLabels"
     DcmlAnnotations = "DcmlAnnotations"
+    Feature = "Feature"
     HarmonyLabels = "HarmonyLabels"
     KeyAnnotations = "KeyAnnotations"
     Measures = "Measures"

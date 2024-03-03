@@ -1808,6 +1808,12 @@ def regroup_phrase_stages(
         A reindexed copy of the phrase data.
     """
     new_index = make_regrouped_stage_index(df, grouping, level_names)
+    if grouping.name in df.columns:
+        df = df.drop(columns=grouping.name)
+        warnings.warn(
+            f"Dropping column {grouping.name!r} from phrase data before prepending the equinymous grouping criterion "
+            f"in order to avoid duplicate columns."
+        )
     result_df = pd.concat([grouping, df], axis=1)
     result_df.index = append_index_levels(result_df.index, new_index, drop_levels=-1)
     return result_df
