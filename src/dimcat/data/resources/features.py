@@ -300,7 +300,7 @@ class HarmonyLabels(DcmlAnnotations):
             new_formatted_column = "scale_degrees_minor"
         else:
             raise NotImplementedError(f"Unknown format {format!r}.")
-        if self.is_loaded and new_formatted_column not in self.field_names:
+        if self.is_loaded and new_formatted_column not in self.df.columns:
             raise FeatureIsMissingFormatColumnError(
                 self.resource_name, new_formatted_column, format, self.name
             )
