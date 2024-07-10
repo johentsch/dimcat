@@ -5,7 +5,7 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.16.0
+    jupytext_version: 1.16.1
 kernelspec:
   display_name: dimcat
   language: python
@@ -16,7 +16,7 @@ kernelspec:
 
 ## Import dimcat and load data
 
-```{code-cell}
+```{code-cell} ipython3
 import dimcat as dc
 from dimcat.data import resources
 from dimcat.steps import analyzers, extractors, groupers
@@ -28,7 +28,7 @@ dataset
 
 ## Show metadata
 
-```{code-cell}
+```{code-cell} ipython3
 dataset.get_metadata()
 ```
 
@@ -38,7 +38,7 @@ dataset.get_metadata()
 
 Here we pass the extracted notes to the counter.
 
-```{code-cell}
+```{code-cell} ipython3
 notes = dataset.get_feature("notes")
 result = analyzers.Counter().process(notes)
 result.plot()
@@ -46,14 +46,14 @@ result.plot()
 
 The `FeatureExtractor` is added to the dataset's pipeline implicitly, but the `Counter` is not because it's applied only to the extracted feature:
 
-```{code-cell}
+```{code-cell} ipython3
 dataset
 ```
 
 The pitch-class distributions shown by `.plot()` correspond to the current **unit of analysis**, which defaults to the piece-level.
 Results also come with a second plotting method, `.plot_grouped()`. Since no groupers have been applied, the entire dataset is treated as a single group:
 
-```{code-cell}
+```{code-cell} ipython3
 result.plot_grouped()
 ```
 
@@ -61,7 +61,7 @@ result.plot_grouped()
 
 Here we pass the dataset to the counter.
 
-```{code-cell}
+```{code-cell} ipython3
 counter = analyzers.Counter(features="notes")
 analyzed_dataset = counter.process(dataset)
 analyzed_dataset.get_result().plot()
@@ -70,13 +70,13 @@ analyzed_dataset.get_result().plot()
 Applying an `Analyzer` to a `Dataset` yields an `AnalyzedDataset` that includes one `Result` resource per analyzed `Feature`.
 Both are to be found in the respective packages in the outputs catalog:
 
-```{code-cell}
+```{code-cell} ipython3
 analyzed_dataset
 ```
 
 ### Variant 3: Define a Pipeline with FeatureExtractor and Counter
 
-```{code-cell}
+```{code-cell} ipython3
 pipeline = dc.Pipeline([
     extractors.FeatureExtractor("notes"),
     analyzers.Counter()
@@ -96,7 +96,7 @@ Let's define a CustomPieceGrouper from random piece groups:
   this level to any processed Resource (provided it contains the grouped pieces). This changes the behaviour of the grouped resource,
   e.g. when plotting it.
 
-```{code-cell}
+```{code-cell} ipython3
 n_groups = 3
 n_members = 30
 
@@ -107,12 +107,12 @@ grouper
 ### Applying the grouper to the analysis result
 ```
 
-```{code-cell}
+```{code-cell} ipython3
 grouped_result = grouper.process(result)
 grouped_result
 ```
 
-```{code-cell}
+```{code-cell} ipython3
 grouped_result.plot_grouped()
 ```
 
@@ -120,7 +120,7 @@ As promised, the grouped result plots differently: Instead of showing pitch-clas
 (which we can still obtain by calling `.plot()`), it shows the pitch-class distributions for each of the groups.
 However, for closer inspection, the area of a circle is not ideal, so let's view it as a bar plot:
 
-```{code-cell}
+```{code-cell} ipython3
 grouped_result.make_bar_plot()
 ```
 
@@ -131,22 +131,22 @@ resources (to the `Notes` feature and to the `Counts` result) and to a dataset c
 Another way to achieve the same goal is by applying steps to data. Let's start with a fresh dataset and
 apply the grouper and the analyzer once more:
 
-```{code-cell}
+```{code-cell} ipython3
 D = dc.Dataset.from_package(package_path)
 analyzed_dataset = D.apply_step(grouper, counter)
 analyzed_dataset
 ```
 
-```{code-cell}
+```{code-cell} ipython3
 result = analyzed_dataset.get_result()
 result
 ```
 
-```{code-cell}
+```{code-cell} ipython3
 result.default_groupby
 ```
 
-```{code-cell}
+```{code-cell} ipython3
 analyzed_dataset.get_result().make_bar_plot()
 ```
 
@@ -158,14 +158,14 @@ or invalid values [are rejected](./errors.md#invalid-option).
 
 Any DimcatObject can be expressed as a config by calling its `.to_config()` method:
 
-```{code-cell}
+```{code-cell} ipython3
 config = counter.to_config()
 config
 ```
 
 Any config can be used to instantiate a DimcatObject:
 
-```{code-cell}
+```{code-cell} ipython3
 counter_copy = config.create()
 print(f"""The new object and the old object are
 equal: {counter == counter_copy}
@@ -174,7 +174,7 @@ identical: {counter is counter_copy}""")
 
 Wherever DiMCAT operates with configs, it also accepts dictionaries:
 
-```{code-cell}
+```{code-cell} ipython3
 step_configs = [
     dict(dtype="FeatureExtractor", features=[dict(dtype="Notes", format="FIFTHS")]),
     dict(dtype='CustomPieceGrouper', grouped_units=grouping),
@@ -184,7 +184,7 @@ pl = dc.Pipeline.from_step_configs(step_configs)
 pl
 ```
 
-```{code-cell}
+```{code-cell} ipython3
 resulting_dataset = pl.process(dataset)
 resulting_dataset.get_result().make_bar_plot()
 ```
