@@ -425,6 +425,69 @@ def make_heatmap(
     return heatmap
 
 
+def make_histogram(
+    df: pd.DataFrame,
+    x_col: Optional[str] = None,
+    y_col: Optional[str] = None,
+    group_cols: Optional[str | Iterable[str]] = None,
+    group_modes: Iterable[GroupMode] = (
+        GroupMode.COLOR,
+        GroupMode.ROWS,
+        GroupMode.COLUMNS,
+    ),
+    title: Optional[str] = None,
+    labels: Optional[dict] = None,
+    hover_data: Optional[str, List[str]] = None,
+    height: Optional[int] = None,
+    width: Optional[int] = None,
+    layout: Optional[dict] = None,
+    font_size: Optional[int] = None,
+    x_axis: Optional[dict] = None,
+    y_axis: Optional[dict] = None,
+    color_axis: Optional[dict] = None,
+    traces_settings: Optional[dict] = None,
+    output: Optional[str] = None,
+    **kwargs,
+) -> go.Figure:
+    """
+
+    Args:
+        layout: Keyword arguments passed to fig.update_layout()
+        **kwargs: Keyword arguments passed to the Plotly plotting function.
+
+    Returns:
+        A Plotly Figure object.
+    """
+    df = df.reset_index()
+    # if "barmode" not in kwargs:
+    #     kwargs[
+    #         "barmode"
+    #     ] = "group"  # Plotly's default: "relative" (meaning stacked); other option: "overlay"]
+    # if "text" not in kwargs and "proportion_%" in df.columns:
+    #     kwargs["text"] = "proportion_%"
+    return _make_plotly(
+        plotly_func=px.histogram,
+        df=df,
+        x_col=x_col,
+        y_col=y_col,
+        group_cols=group_cols,
+        group_modes=group_modes,
+        title=title,
+        labels=labels,
+        hover_data=hover_data,
+        height=height,
+        width=width,
+        layout=layout,
+        font_size=font_size,
+        x_axis=x_axis,
+        y_axis=y_axis,
+        color_axis=color_axis,
+        traces_settings=traces_settings,
+        output=output,
+        **kwargs,
+    )
+
+
 def make_line_plot(
     df: pd.DataFrame,
     x_col: Optional[str] = None,
@@ -667,7 +730,7 @@ def make_pie_chart(
         A Plotly Figure object.
     """
     return _make_plotly(
-        plotly_func=px.line,
+        plotly_func=px.pie,
         df=df,
         x_col=x_col,
         y_col=y_col,
@@ -716,7 +779,7 @@ def _make_plotly(
 ) -> go.Figure:
     """Boilerplate for Plotly plotting functions."""
     df = df.reset_index()
-    plot_settings = make_plot_settings(
+    params = dict(
         df=df,
         x_col=x_col,
         y_col=y_col,
@@ -728,7 +791,10 @@ def _make_plotly(
         height=height,
         width=width,
     )
-
+    if plotly_func == px.pie:
+        plot_settings = make_pie_chart_settings(**params)
+    else:
+        plot_settings = make_plot_settings(**params)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         fig = plotly_func(
@@ -946,6 +1012,62 @@ def make_strip_plot(
     """
     return _make_plotly(
         plotly_func=px.strip,
+        df=df,
+        x_col=x_col,
+        y_col=y_col,
+        group_cols=group_cols,
+        group_modes=group_modes,
+        title=title,
+        labels=labels,
+        hover_data=hover_data,
+        height=height,
+        width=width,
+        layout=layout,
+        font_size=font_size,
+        x_axis=x_axis,
+        y_axis=y_axis,
+        color_axis=color_axis,
+        traces_settings=traces_settings,
+        output=output,
+        **kwargs,
+    )
+
+
+def make_violin_plot(
+    df: pd.DataFrame,
+    x_col: Optional[str] = None,
+    y_col: Optional[str] = None,
+    group_cols: Optional[str | Iterable[str]] = None,
+    group_modes: Iterable[GroupMode] = (
+        GroupMode.COLOR,
+        GroupMode.ROWS,
+        GroupMode.COLUMNS,
+    ),
+    title: Optional[str] = None,
+    labels: Optional[dict] = None,
+    hover_data: Optional[str, List[str]] = None,
+    height: Optional[int] = None,
+    width: Optional[int] = None,
+    layout: Optional[dict] = None,
+    font_size: Optional[int] = None,
+    x_axis: Optional[dict] = None,
+    y_axis: Optional[dict] = None,
+    color_axis: Optional[dict] = None,
+    traces_settings: Optional[dict] = None,
+    output: Optional[str] = None,
+    **kwargs,
+) -> go.Figure:
+    """
+
+    Args:
+        layout: Keyword arguments passed to fig.update_layout()
+        **kwargs: Keyword arguments passed to the Plotly plotting function.
+
+    Returns:
+        A Plotly Figure object.
+    """
+    return _make_plotly(
+        plotly_func=px.violin,
         df=df,
         x_col=x_col,
         y_col=y_col,
