@@ -132,7 +132,6 @@ Clone the repository
 
 #. Install |pre-commit|_::
 
-    pip install pre-commit
     pre-commit install
 
    ``DiMCAT`` comes with a lot of hooks configured to automatically help the
