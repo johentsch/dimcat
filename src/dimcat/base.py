@@ -1,3 +1,7 @@
+"""
+The dimcat.base module defines the three principal classes: DimcatSchema, DimcatObject, and DimcatConfig
+as well as their interactions.
+"""
 from __future__ import annotations
 
 import json
