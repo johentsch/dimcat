@@ -46,12 +46,12 @@ Using this Schema, a DimcatObject can be serialized to and deserialized from:
 
 Under the hood, methods 2-4 use method 1. In addition, `DiMCAT` has the following standalone functions to deserialize serialized DimcatObjects:
 
-1. {func}`~.base.deserialize_dict`
+1. {func}`~.deserialize_dict`
 2. {func}`~.deserialize_config`
-3. {meth}`~dimct.base.deserialize_json_str`
-4. {meth}`dimct.base.deserialize_json_file`
+3. {func}`~.deserialize_json_str`
+4. {func}`~.deserialize_json_file`
 
-This is possible because each deserialized object includes a value for the field `dtype` specifying the object's class name from which the schema can be retrieved thanks to the class attribute {attr}`~.DimcatObject.schema`. Other functions that are relevant in this context are {meth}`~.get_class` and {meth}`~.get_schema`.
+This is possible because each deserialized object includes a value for the field `dtype` specifying the object's class name from which the schema can be retrieved thanks to the class attribute {attr}`~.DimcatObject.schema`. Other functions that are relevant in this context are {meth}`~.get_class` and {meth}`~.get_schema` (see [](#class-registry))
 
 #### Example
 
@@ -113,6 +113,32 @@ feature_extractor = Constructor()
 
 Schemas are not part of the registry. For retrieving a class's schema we can use `Constructor.schema` (building on the example) or the convenience function {func}`~.get_schema`.
 
+
+### Public and private methods
+
+The DiMCAT project differentiates between private methods whose names begin with `_` and public methods whose names don't.
+Semantically, public methods are those that users interact with and which therefore often perform additional checks, e.g. of user input;
+then, the public method calls the private method of the same name which performs the actual job.
+In most cases, subclasses override only private methods.
+
+#### Example
+
+For example, compare the public {meth}`.PipelineStep.process_dataset` with its private counterpart:
+
+```python
+    def _process_dataset(self, dataset: Dataset) -> Dataset:
+        """Apply this PipelineStep to a :class:`Dataset` and return a copy containing the output(s)."""
+        new_dataset = self._make_new_dataset(dataset)
+        self.fit_to_dataset(new_dataset)
+        # this is where subclasses create a new package and add it to the dataset
+        return new_dataset
+    
+    def process_dataset(self, dataset: Dataset) -> Dataset:
+        """Apply this PipelineStep to a :class:`Dataset` and return a copy containing the output(s)."""
+        self.check_dataset(dataset)
+        return self._process_dataset(dataset)
+```
+
 +++
 
 ## Two types of DimcatObjects
@@ -123,7 +149,7 @@ All classes that are neither a schema nor a config are one of the two following 
 2. {class}`~.PipelineStep`: a DimcatObject that accepts a Data object as input and returns a Data object as output.
 
 They are organized in two packages, {mod}`dimcat.data` and {mod}`dimcat.steps`. Objects defined in {mod}`dimcat.steps` operate on objects defined in {mod}`dimcat.data` and can import from it, but not the other way around.
-In a few exceptional cases where Data objects need to actively use PipelineStep (which is the case for convenience functions / syntactic sugar such as {meth}`.Dataset.extract_feature`), we circumvent circular imports by summoning them via {func}`~.get_class` (and not using type hints for the summoned object).
+In a few exceptional cases where Data objects need to actively use PipelineStep (which is the case, for example, for {meth}`.Dataset.extract_feature`), we circumvent circular imports by summoning them via {func}`~.get_class` (and not using type hints for the summoned object).
 
 ### Data objects
 
@@ -140,7 +166,7 @@ The principal Data object is the {class}`~.Dataset` and is the one that users us
 
 * {attr}`~.inputs`, an {class}`~.InputsCatalog`
 * {attr}`~.outputs`, an {class}`~.OutputsCatalog`
-* {attr}`~.pipeline`, a {class}`~.Pipeline` consisting of all previously applied {class}`~.PipelineStep <PipelineSteps>`.
+* {attr}`~.pipeline`, a {class}`~.Pipeline` consisting of all previously applied {class}`PipelineSteps <~.PipelineStep>`.
 
 After applying a {class}`~.PipelineStep` to a {class}`~.Dataset`,
 its {attr}`~.outputs` MUST correspond to the result of applying the {attr}`~.pipeline` to {attr}`~.inputs`.
@@ -149,11 +175,28 @@ Any {class}`~.PipelineStep` applied on a dataset will be performed on all eligib
 
 
 Datasets are passive 'by nature', meaning that, in general, they are being manipulated by PipelineSteps or by the user.
-However, in a few cases, they need to create PipelineSteps,
-namely for (re)setting the {class}`~.Pipeline` object and for the convenience method {meth}`~.extract_feature` (which creates and applies a {class}`~.FeatureExtractor`).
-In these cases, {func}`~.get_class` is used to circumvent circular imports (see [](class-registry)).
+PipelineSteps process a Dataset by requesting on or several features using {meth}`.Dataset.get_feature`,
+ processing each {class}`~.Feature`, and adding the processed Feature(s) to the Dataset's OutputsCatalog. 
+However, in one case, the Dataset *does* play an active role, namely in the extraction of features from the InputsCatalog.
+When prompted with `.get_feature(F)` where `F` is some specification of a {class}`~.Feature`, the Dataset will
+
+* look up the feature in its OutputCatalog and return it if present,
+* call {meth}`.Dataset.extract_feature` otherwise and return its output.
+
+Since the actual extraction happens on the level of a single resource (a {class}`~.Facet` which names the feature among its {attr}`~.DimcatResource.extractable_features`), the latter case invokes the following call chain:
+
+* {meth}`.Dataset.extract_feature` calls
+* {meth}`.InputsCatalog.extract_feature` calls
+* {meth}`.Package.extract_feature` calls 
+* {meth}`.DimcatResource.extract_feature`.
+
+The Dataset applies all previously applied PipelineSteps to the thus extracted {class}`~.Feature`,
+ adds it to its {class}`~.OutputsCatalog` and appends the {class}`~.FeatureExtractor` to its {class}`~.Pipeline`.
 
 
++++
+
+### DimcatCatalog
 
 The Dataset provides convenience methods that are equivalent to applying the corresponding PipelineStep.
 Every PipelineStep applied to it will return a new Dataset that can be serialized and deserialized to re-start the pipeline from that point.
