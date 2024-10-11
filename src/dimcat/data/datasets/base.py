@@ -321,6 +321,7 @@ class Dataset(Data):
                 yield from []
             else:
                 yield from self.outputs.get_package_by_name("features")
+            return
         configs = features_argument2config_list(features)
         for config in configs:
             yield self.get_feature(config)
