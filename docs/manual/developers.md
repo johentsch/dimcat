@@ -31,7 +31,6 @@ The library is called DiMCAT and has three high-level objects:
    It derives from MutableMapping and is used for communicating about and checking the compatibility of DimcatObjects.
 
 The three classes are defined in the `src\dimcat\base.py` module.
-   
 
 +++
 
@@ -69,11 +68,10 @@ obj_copy # DimcatObject.__repr__() uses .to_dict() under the hood
 #### Implementation
 
 The implementation is centered on two methods of the respective object's nested {class}`~.DimcatSchema` which derives from [marshmallow.Schema](https://marshmallow.readthedocs.io/en/stable/marshmallow.schema.html): [schema.dump()](https://marshmallow.readthedocs.io/en/stable/marshmallow.schema.html#marshmallow.schema.Schema.dump) and [schema.load()](https://marshmallow.readthedocs.io/en/stable/marshmallow.schema.html#marshmallow.schema.Schema.load). The former takes an object and returns a dictionary, whereas the latter takes a dictionary and returns an object. Correspondingly, {meth}`.DimcatObject.to_dict`  and {meth}`.DimcatObject.from_dict` retrieve the relevant schema singleton from {attr}`.DimcatObject.schema` to call these two methods respectively.
- 
 
 +++
 
-#### Creating a new type of DimcatObject
+### Creating a new type of DimcatObject
 
 All objects in `DiMCAT` (except {class}`~.DimcatSchema`) inherit from {class}`~.DimcatObject`. Inheritance also concerns the nested schema class. Effectively, this means that if you subclass an existing object type without adding new initialization arguments, your new class can simply inherit its parent's `Schema` class and serialization will just work as described above. However, if you add a property, meaning that you will also need to add the corresponding initialization argument, you also need to include a nested `Schema` class which inherits from the parent's schema. Each property that is to be serialized needs to be declared as [marshmallow field](https://marshmallow.readthedocs.io/en/stable/marshmallow.fields.html) corresponding to the datatype.
 
@@ -84,26 +82,78 @@ class NewType(dc.base.DimcatObject):
 
     class Schema(dc.base.DimcatObject.Schema):
         new_property = fields.Str()
-        
+
     def __init__(self, new_property: str, **kwargs):
         super().__init__(**kwargs)
         self.new_property = new_property
- 
-        
+
+
 new_obj = NewType("some string value")
 as_dict = new_obj.to_dict()
 new_obj_copy = dc.deserialize_dict(as_dict)
 new_obj_copy
 ```
 
+In cases where an attribute should point to a DimcatObject (e.g. all {class}`~.Result` objects referencing the analyzed {class}`~.DimcatResource` via the {attr}`~.analyzed_resource` property), we can use the {class}`~.DimcatObjectField` in the schema.
+
++++
+
+(class-registry)=
+### The class registry
+
+Every {class}`~.DimcatObject` comes with the attribute {attr}`~._registry` which is a dictionary mapping the names of all DimcatObjects to their classes.
+It is implemented using [__init_subclass__](https://docs.python.org/3/reference/datamodel.html#object.__init_subclass__).
+We don't need to interact directy with the registry thanks to the convenience function {func}`~.get_class` which takes the name of an object as a string and returns the respective class.
+In the code, this would typically look like this:
+
+```{code-cell}
+Constructor = dc.get_class("FeatureExtractor")
+feature_extractor = Constructor()
+```
+
+Schemas are not part of the registry. For retrieving a class's schema we can use `Constructor.schema` (building on the example) or the convenience function {func}`~.get_schema`.
+
++++
+
 ## Two types of DimcatObjects
 
 All classes that are neither a schema nor a config are one of the two following subclasses of DimcatObject:
 
-1. {class}`~.Data`: a DimcatObject that represents a dataset, a subset of a dataset, or a an individual resource such as a dataframe.
+1. {class}`~.Data`: a DimcatObject that represents a dataset, a subset of a dataset, or an individual resource such as a dataframe.
 2. {class}`~.PipelineStep`: a DimcatObject that accepts a Data object as input and returns a Data object as output.
 
-**The principal Data object is called {class}`~.Dataset` and is the one that users will interact with the most.**
+They are organized in two packages, {mod}`dimcat.data` and {mod}`dimcat.steps`. Objects defined in {mod}`dimcat.steps` operate on objects defined in {mod}`dimcat.data` and can import from it, but not the other way around.
+In a few exceptional cases where Data objects need to actively use PipelineStep (which is the case for convenience functions / syntactic sugar such as {meth}`.Dataset.extract_feature`), we circumvent circular imports by summoning them via {func}`~.get_class` (and not using type hints for the summoned object).
+
+### Data objects
+
+Data is organized into a hierarchical hierarchy of four objects (from top to bottom):
+
+* {class}`~.Dataset`, consisting of two catalogs, called `inputs` and `outputs`;
+* {class}`~.DimcatCatalog` ("catalog"), a collection of packages;
+* {class}`~.DimcatPackage` ("package"), a collection of resources;
+* {class}`~.DimcatResource` ("resource"), a wrapper around a dataframe.
+
+#### Dataset
+
+The principal Data object is the {class}`~.Dataset` and is the one that users usually interact with the most. Its three principal properties are:
+
+* {attr}`~.inputs`, an {class}`~.InputsCatalog`
+* {attr}`~.outputs`, an {class}`~.OutputsCatalog`
+* {attr}`~.pipeline`, a {class}`~.Pipeline` consisting of all previously applied {class}`~.PipelineStep <PipelineSteps>`.
+
+After applying a {class}`~.PipelineStep` to a {class}`~.Dataset`,
+its {attr}`~.outputs` MUST correspond to the result of applying the {attr}`~.pipeline` to {attr}`~.inputs`.
+A serialized Dataset is therefore suited for communicating results in a reproducible manner.
+Any {class}`~.PipelineStep` applied on a dataset will be performed on all eligible resources that the packages in {attr}`~.inputs` contain and result in a new dataset containing the relevant output packages/resources under {attr}`~.outputs`.
+
+
+Datasets are passive 'by nature', meaning that, in general, they are being manipulated by PipelineSteps or by the user.
+However, in a few cases, they need to create PipelineSteps,
+namely for (re)setting the {class}`~.Pipeline` object and for the convenience method {meth}`~.extract_feature` (which creates and applies a {class}`~.FeatureExtractor`).
+In these cases, {func}`~.get_class` is used to circumvent circular imports (see [](class-registry)).
+
+
 
 The Dataset provides convenience methods that are equivalent to applying the corresponding PipelineStep.
 Every PipelineStep applied to it will return a new Dataset that can be serialized and deserialized to re-start the pipeline from that point.

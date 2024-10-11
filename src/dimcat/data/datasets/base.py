@@ -58,15 +58,6 @@ if TYPE_CHECKING:
 
 module_logger = logging.getLogger(__name__)
 
-
-# region DimcatPackage
-
-
-# endregion DimcatPackage
-# region DimcatCatalog
-
-
-# endregion DimcatCatalog
 # region Dataset
 
 Ds = TypeVar("Ds", bound="Dataset")
