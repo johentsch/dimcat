@@ -1,5 +1,33 @@
 # Changelog
 
+## [3.3.0](https://github.com/DCMLab/dimcat/compare/v3.2.0...v3.3.0) (2024-11-18)
+
+
+### Features
+
+* make_histogram() and make_violin_plot() ([ec89ce2](https://github.com/DCMLab/dimcat/commit/ec89ce2799d822f244aae11cbae5125202eee69f))
+
+
+### Bug Fixes
+
+* avoids duplicate column when applying stage criterion ([66aa952](https://github.com/DCMLab/dimcat/commit/66aa952980ec6161efbcae5ba68f46ea8b450fb0))
+* check column directly for the time being (fields are not yet updated automatically) ([aa3376c](https://github.com/DCMLab/dimcat/commit/aa3376c48c43180a63aae0e148a27561fffdcf22))
+* correct inner range index even if its start positions overlap those of the outer start mask ([eb45b17](https://github.com/DCMLab/dimcat/commit/eb45b1787fa3745fe63034126826d40bf0a0ce6b))
+* stop Dataset.iter_features() after iterating through all ([6035174](https://github.com/DCMLab/dimcat/commit/6035174c7289ca5bbb71f4454acb0ea039931776))
+* workaround for avoiding PermissionError on Windows when using tempfile ([e5f3823](https://github.com/DCMLab/dimcat/commit/e5f382392b5476e46f5b5816723812b440f6e950))
+
+
+### Documentation
+
+* adds developer's guide notebook ([4fcd554](https://github.com/DCMLab/dimcat/commit/4fcd554d1e60a514c1803fdd1afefc73c1c7516a))
+* Dataset ([7717f16](https://github.com/DCMLab/dimcat/commit/7717f1668a0fc091a485004463e72445c9dbc0cd))
+* Dataset for developers ([b52692d](https://github.com/DCMLab/dimcat/commit/b52692d09355b67cff495cf878a171a4a3cf76c0))
+* fixes table in CONTRIBUTING.rst ([813da3f](https://github.com/DCMLab/dimcat/commit/813da3fe7fcaa6c49a42baaa3939aa811c591d3e))
+* more work on the developers docs ([fed676b](https://github.com/DCMLab/dimcat/commit/fed676b64fbf089b9b9ee647cd54d2cf577ef0ee))
+* moves architecture primer to developers guide ([19c7373](https://github.com/DCMLab/dimcat/commit/19c737388e53e0da2722cf952feb7d3211231088))
+* removes pip install (pre-commit is part of the [docs] optional requirements) ([ba2258f](https://github.com/DCMLab/dimcat/commit/ba2258fe4d23d5838ae6374c9c9c1d2f2550d2ea))
+* several docstrings ([a735464](https://github.com/DCMLab/dimcat/commit/a7354648abfe1290b06d582d836d61e410657bc0))
+
 ## [3.2.0](https://github.com/DCMLab/dimcat/compare/v3.1.0...v3.2.0) (2024-01-30)
 
 
