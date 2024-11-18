@@ -51,7 +51,7 @@ Under the hood, methods 2-4 use method 1. In addition, `DiMCAT` has the followin
 3. {func}`~.deserialize_json_str`
 4. {func}`~.deserialize_json_file`
 
-This is possible because each deserialized object includes a value for the field `dtype` specifying the object's class name from which the schema can be retrieved thanks to the class attribute {attr}`~.DimcatObject.schema`. Other functions that are relevant in this context are {meth}`~.get_class` and {meth}`~.get_schema` (see [](#class-registry))
+This is possible because each deserialized object includes a value for the field `dtype` specifying the object's class name from which the schema can be retrieved thanks to the class attribute {attr}`~.DimcatObject.schema`. Other functions that are relevant in this context are {func}`~.get_class` and {func}`~.get_schema` (see [](#class-registry))
 
 #### Example
 
@@ -62,6 +62,9 @@ obj = cfg.create()
 print("This object is a", type(obj))
 json_str = obj.to_json()
 obj_copy = dc.base.DimcatObject.from_json(json_str)
+another_copy = dc.deserialize_json_str(json_str)
+print(f"The two deserialized objects are equivalent: ", obj_copy == another_copy)
+print(f"The two deserialized objects are identical: ", obj_copy is another_copy)
 obj_copy # DimcatObject.__repr__() uses .to_dict() under the hood
 ```
 
@@ -94,7 +97,7 @@ new_obj_copy = dc.deserialize_dict(as_dict)
 new_obj_copy
 ```
 
-In cases where an attribute should point to a DimcatObject (e.g. all {class}`~.Result` objects referencing the analyzed {class}`~.DimcatResource` via the {attr}`~.analyzed_resource` property), we can use the {class}`~.DimcatObjectField` in the schema.
+In cases where an attribute should point to a DimcatObject (e.g. all {class}`~.Result` objects referencing the analyzed {class}`~.DimcatResource` via the {attr}`~.analyzed_resource` property), we can use the type {class}`~.DimcatObjectField` in the schema.
 
 +++
 
@@ -143,7 +146,7 @@ For example, compare the public {meth}`.PipelineStep.process_dataset` with its p
 
 ## Two types of DimcatObjects
 
-All classes that are neither a schema nor a config are one of the two following subclasses of DimcatObject:
+All classes that are neither a schema nor a config inherit from one of the two following subclasses of DimcatObject:
 
 1. {class}`~.Data`: a DimcatObject that represents a dataset, a subset of a dataset, or an individual resource such as a dataframe.
 2. {class}`~.PipelineStep`: a DimcatObject that accepts a Data object as input and returns a Data object as output.
@@ -160,6 +163,14 @@ Data is organized into a hierarchical hierarchy of four objects (from top to bot
 * {class}`~.DimcatPackage` ("package"), a collection of resources;
 * {class}`~.DimcatResource` ("resource"), a wrapper around a dataframe.
 
+There are three main types of resources, namely
+
+* {class}`~.Facet`, a representation of score-related elements that represents the loaded data with minimal standardization (e.g. {class}`~.MuseScoreNotes`);
+* {class}`~.Feature`, some aspect extracted from a facet, standardized by ``Dimcat`` (e.g., {class}`~.Notes`);
+* {class}`~.Result`, a result of applying a {class}`~.PipelineStep` to a feature.
+
+``Dimcat`` cannot process facets directly; the relevant features need to be extracted first. Many PipelineSteps extract the required feature automatically.
+
 #### Dataset
 
 The principal Data object is the {class}`~.Dataset` and is the one that users usually interact with the most. Its three principal properties are:
@@ -175,7 +186,7 @@ Any {class}`~.PipelineStep` applied on a dataset will be performed on all eligib
 
 
 Datasets are passive 'by nature', meaning that, in general, they are being manipulated by PipelineSteps or by the user.
-PipelineSteps process a Dataset by requesting on or several features using {meth}`.Dataset.get_feature`,
+PipelineSteps process a Dataset by requesting one or several features using {meth}`.Dataset.get_feature`,
  processing each {class}`~.Feature`, and adding the processed Feature(s) to the Dataset's OutputsCatalog. 
 However, in one case, the Dataset *does* play an active role, namely in the extraction of features from the InputsCatalog.
 When prompted with `.get_feature(F)` where `F` is some specification of a {class}`~.Feature`, the Dataset will
@@ -196,39 +207,43 @@ The Dataset applies all previously applied PipelineSteps to the thus extracted {
 
 +++
 
-### DimcatCatalog
+#### DimcatCatalog
 
-The Dataset provides convenience methods that are equivalent to applying the corresponding PipelineStep.
-Every PipelineStep applied to it will return a new Dataset that can be serialized and deserialized to re-start the pipeline from that point.
-To that aim, every Dataset stores a serialization of the applied PipelineSteps and of the original Dataset that served as initial input.
-This initial input is specified as a {class}`~.DimcatCatalog` which is a collection of {class}`DimcatPackages <.data.dataset.base.DimcatPackage>`,
-each of which is a collection of {class}`DimcatResources <.data.resources.base.DimcatResource>`,
-as defined by the [Frictionless Data specifications](https://frictionlessdata.io).
-The preferred structure of a DimcatPackage is a .zip and a datapackage.json file, where the former contains one or several .tsv files (resources) described in the latter.
-Since the data that DiMCAT transforms and analyzes comes from very heterogeneous sources, each original corpus is pre-processed and stored as a [frictionless.Package](https://framework.frictionlessdata.io/docs/framework/package.html) together with the metadata relevant for reproducing the pre-processing.
+As per the [Frictionless Data specifications](https://frictionlessdata.io), a catalog is a collection of packages. In ``Dimcat``, catalogs appear only in a single place: Every {class}`~.Dataset` consists of two {class}`DimcatCatalogs <.DimcatCatalog>`, namely an {class}`~.InputsCatalog` and an {class}`~.OutputsCatalog`.
+{attr}`~.inputs` includes all loaded datapackages, and {attr}`~.outputs` all (processed or unprocessed) features extracted from them, as well as all other 
+processing results. 
+
+
+#### DimcatPackage
+
+The preferred structure of a DimcatPackage is a ``.zip`` and a ``.datapackage.json`` file, where the former contains one or several ``.tsv`` files (resources) described in the latter.
+The ``.datapackage.json`` file follows the [Frictionless](https://frictionlessdata.io) Data specifications for packages and allows ``DiMCAT`` to know what's in a package without having to actually load the data from the ``.tsv`` files.
+
+Since the data that DiMCAT transforms and analyzes comes from very heterogeneous sources, each original corpus is pre-processed and stored as a [frictionless.Package](https://framework.frictionlessdata.io/docs/framework/package.html). This task is achieved by loaders. When your aim is to enable ``DiMCAT`` to load a new type of dataset, you will have to implement a new {class}`~.Loader`. Please approach the developers by [creating an issue](https://github.com/DCMLab/dimcat/issues).
+
+#### DimcatResource
+
+From all this follows that the Dataset is mainly a structured container for {class}`DimcatResources <.DimcatResource>`, of which there are three main types:
+
+1. {class}`Facets <.Facet>`, i.e. the resources described in the original datapackage.json. They aim to stay as faithful as possible to the original data, applying only mild standardization and normalization.
+   All Facet resources come with several columns that represent timestamps both in absolute and in musical time, allowing for the alignment of different corpora.
+2. {class}`Features <.Feature>`, i.e. resources derived from Facets explicitly (via {meth}`.Dataset.extract_feature`) or implicitly (by applying PipelineSteps which extract features automatically). They are standardized objects that are required by  PipelineSteps to compute statistics and visualizations.
+   To allow for straightforward serialization of the Dataset, all Feature resources are represented as a DimcatCatalog called {attr}`~.Dataset.outputs`.
+3. {class}`Results <.Result>`, i.e., resources that represent the results of applying an {class}`~.Analyzer` to a {class}`~.Feature`. They are equally stored in the {attr}`~.Dataset.outputs` catalog and come with the appropriate methods for plotting the results.
+
+Although [Frictionless resources](https://framework.frictionlessdata.io/docs/framework/resource.html) can be stored as individual ``.tsv`` files with their own ``.resource.json`` descriptors,
+ ``DiMCAT`` typically stores multiple resources as a datapackage, i.e., a ``.zip`` file containing one ``.tsv`` file per resource, accompanied with a single ``.datapackage.json`` file detailing the metadata for all of them.
+ In both cases, the descriptor specifies the column schema for each resource, allowing ``DiMCAT`` to "lazy-load" the data, meaning that the Dataframes are loaded into memory only the moment when they are actually needed (using {meth}`.DimcatResource.load`).
+
+A DimcatResource can be instantiated in two different ways, either from a descriptor or from a dataframe.
+At any given moment, the {attr}`~.DimcatResource.status` attribute returns an Enum value reflecting the availability and state of the/a dataframe. This is relevant for keeping datapackages stored on disk up-to-date. 
+When a Dataset is serialized, all dataframes from the outputs catalog that haven't been stored to disk yet are written into one or several .zip files so that they can be referenced by the updated descriptor(s).
+
+If you want to create a new type of DimcatResource, please inherit from the relevant subclass and refer to the docstrings of {class}`~.DimcatResource` in the module {mod}`.dc` for understanding how to use the class variables.
 
 +++
 
-**It follows that the Dataset is mainly a container for {class}`DimcatResources <.data.resources.base.DimcatResource>` namely:**
 
-1. Facets, i.e. the resources described in the original datapackage.json. They aim to stay as faithful as possible to the original data, applying only mild standardization and normalization.
-   All Facet resources come with several columns that represent timestamps both in absolute and in musical time, allowing for the alignment of different corpora.
-   The [Frictionless resource](https://framework.frictionlessdata.io/docs/framework/resource.html) descriptors listed in the datapackage.json contain both the column schema and the piece IDs that are present in each of the facets.
-2. {class}`Features <~.data.resources.features.Feature>`, i.e. resources derived from Facets by applying PipelineSteps. They are standardized objects that are requested by the PipelineSteps to  compute statistics and visualizations.
-   To allow for straightforward serialization of the Dataset, all Feature resources are represented as a DimcatCatalog called `outputs`, which can be stored as .tsv files in one or several .zip files.
-
-**A {class}`~.DimcatResource` functions similarly to the [frictionless.Resource](https://framework.frictionlessdata.io/docs/framework/resource.html) that it wraps, meaning that it grants access to the metadata without having to load the dataframes into memory.**
-
-It can be instantiated in two different ways, either from a resource descriptor or from a dataframe.
-At any given moment, the {attr}`~.DimcatResource.status` attribute returns an Enum value reflecting the availability and state of the/a dataframe.
-When a Dataset is serialized, all dataframes from the outputs catalog that haven't been stored to disk yet are written into one or several .zip files so that they can be referenced by resource descriptors.
-
-**One of the most important methods, used by most PipelineSteps, is {meth}`.Dataset.get_feature`, which accepts a Feature config and returns a Feature resource.**
-
-The Feature config is a {class}`~.DimcatConfig` that specifies the type of Feature to be returned and the parameters to be used for its computation. Furthermore, it is also used
-
-1. to determine for each piece in every loaded DimcatPackage an Availability value, ranging from not available over available with heavy computation to available instantly.
-2. to determine whether the Feature resource had already been requested and stored in the outputs catalog.
 
 ```{code-cell}
 
