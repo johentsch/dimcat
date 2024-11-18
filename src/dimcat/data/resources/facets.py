@@ -669,7 +669,7 @@ class MuseScoreFacetName(ObjectEnum):
 class Facet(DimcatResource):
     """A facet is one aspect of a score that can sensibly ordered and conceived of along the score's timeline. The
     format of a facet depends on the score format and tries to stay as close to the original as possible, using only
-    the necessary minimum of standardization. Content an format of a facet define which features can be extracted,
+    the necessary minimum of standardization. Content and format of a facet define which features can be extracted,
     based on which configuration options.
     """
 
@@ -677,18 +677,25 @@ class Facet(DimcatResource):
 
 
 class EventsFacet(Facet):
+    """A facet that represents sounding events and/or rests. Events specify 'what' is to be performed."""
     pass
 
 
 class ControlsFacet(Facet):
+    """A facet that represents 'control events' in MEI parlance; i.e. elements that depend on events to exist,
+    such as dynamics, ties, phrase marks, pedal marks, etc. Controls define 'how' something is to be performed.
+    """
     pass
 
 
 class AnnotationsFacet(Facet):
+    """A facet that represents one or several annotation layers."""
     pass
 
 
 class StructureFacet(Facet):
+    """A facet that describes structural elements of a score, pertaining to its timeline, segmentations, or
+    its repeat structure."""
     pass
 
 

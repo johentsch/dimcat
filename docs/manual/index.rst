@@ -8,3 +8,4 @@ Manual
    quick
    data
    errors
+   developers

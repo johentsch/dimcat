@@ -251,7 +251,7 @@ class PipelineStep(DimcatObject):
         """Apply this PipelineStep to a :class:`Dataset` and return a copy containing the output(s)."""
         new_dataset = self._make_new_dataset(dataset)
         self.fit_to_dataset(new_dataset)
-        # create a new package and add it to the dataset
+        # this is where subclasses create a new package and add it to the dataset
         return new_dataset
 
     def process_dataset(self, dataset: Dataset) -> Dataset:
@@ -406,7 +406,9 @@ class FeatureProcessingStep(PipelineStep):
         return dataset.iter_features(feature_specs)
 
     def _iter_resources(self, dataset: Dataset) -> Iterator[Tuple[str, DimcatResource]]:
-        """Iterate over all resources in the dataset's OutputCatalog."""
+        """Iterate over all resources in the dataset's OutputCatalog.
+        """
+        # ToDo: Pull down to ResourceTransformation and rename to iter_output_resources()
         return dataset.outputs.iter_resources()
 
     def get_feature_specs(self) -> List[DimcatConfig]:

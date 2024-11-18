@@ -1,3 +1,7 @@
+"""
+The dimcat.base module defines the three principal classes: DimcatSchema, DimcatObject, and DimcatConfig
+as well as their interactions.
+"""
 from __future__ import annotations
 
 import json
@@ -636,7 +640,7 @@ class DimcatConfig(MutableMapping, DimcatObject):
         self._options[key] = value
 
     @cached_property
-    def options_class(self):
+    def options_class(self) -> Type:
         """The class of the described DimcatObject."""
         return get_class(self.options_dtype)
 
@@ -646,7 +650,7 @@ class DimcatConfig(MutableMapping, DimcatObject):
         return self._options["dtype"]
 
     @property
-    def options_schema(self):
+    def options_schema(self) -> DimcatSchema:
         """Returns the (instantiated) Dimcat singleton object for the class this Config describes."""
         return get_schema(self.options_dtype)
 
@@ -677,6 +681,10 @@ class DimcatConfig(MutableMapping, DimcatObject):
         return obj.to_config()
 
     def create(self) -> DimcatObject:
+        """Creates the object that this DimcatConfig represents.
+        The returned object corresponds to the type :attr:`options_dtype` and will be instantiated
+        with :attr:`options`.
+        """
         return self.options_schema.load(self._options)
 
     def matches(

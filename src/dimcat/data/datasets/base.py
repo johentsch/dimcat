@@ -58,15 +58,6 @@ if TYPE_CHECKING:
 
 module_logger = logging.getLogger(__name__)
 
-
-# region DimcatPackage
-
-
-# endregion DimcatPackage
-# region DimcatCatalog
-
-
-# endregion DimcatCatalog
 # region Dataset
 
 Ds = TypeVar("Ds", bound="Dataset")
@@ -330,6 +321,7 @@ class Dataset(Data):
                 yield from []
             else:
                 yield from self.outputs.get_package_by_name("features")
+            return
         configs = features_argument2config_list(features)
         for config in configs:
             yield self.get_feature(config)

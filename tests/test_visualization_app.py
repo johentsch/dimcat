@@ -11,6 +11,7 @@ EXCLUDED_ANALYZERS = [  # to be synchronized with AnalyzerConstants.analyzer_to_
 ]  # to be synchronized with AnalyzerConstants.analyzer_to_hide
 EXCLUDED_FEATURES = [  # to be synchronized with AnalyzerConstants.feature_to_hide
     # abstract features
+    "Feature",
     "Metadata",
     "Annotations",
     # untested features

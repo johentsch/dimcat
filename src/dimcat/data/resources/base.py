@@ -254,7 +254,7 @@ class ResourceSchema(Data.Schema):
 class Resource(Data):
     """A Resource is essentially a wrapper around a :obj:`frictionless.Resource` object. Initializing a Resource object
     from a descriptor dispatches to the appropriate subclass, depending on the specified dtype or, if absent,
-    to a :class:`DimcatResource` for tabular data and to a :class:`PathResource` for any other.
+    to a :class:`.DimcatResource` for tabular data and to a :class:`.PathResource` for any other.
     """
 
     @classmethod

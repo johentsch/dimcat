@@ -210,10 +210,15 @@ class TestSerialization:
 
     def test_serialization_to_json_file(self):
         with tempfile.NamedTemporaryFile(
-            mode="r+", suffix=".json", encoding="utf-8"
+                mode="r+",
+                suffix=".json",
+                encoding="utf-8",
+                delete=False, # workaround to avoid PermissionError on Windows: delete tempfile manually
         ) as tmp_file:
-            self.dimcat_object.to_json_file(tmp_file.name)
-            new_object = deserialize_json_file(tmp_file.name)
+            tmp_filepath = tmp_file.name
+            self.dimcat_object.to_json_file(tmp_filepath)
+            new_object = deserialize_json_file(tmp_filepath)
+        os.remove(tmp_filepath)
         assert new_object == self.dimcat_object
 
 
