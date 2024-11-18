@@ -681,6 +681,10 @@ class DimcatConfig(MutableMapping, DimcatObject):
         return obj.to_config()
 
     def create(self) -> DimcatObject:
+        """Creates the object that this DimcatConfig represents.
+        The returned object corresponds to the type :attr:`options_dtype` and will be instantiated
+        with :attr:`options`.
+        """
         return self.options_schema.load(self._options)
 
     def matches(

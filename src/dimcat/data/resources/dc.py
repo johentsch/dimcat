@@ -149,7 +149,7 @@ class DimcatResource(Resource, Generic[D]):
     Resource in a package (common case)
     -----------------------------------
 
-    A DimcatResource knows that it is part of a package if its ``filepath`` ends on ``.zip``. In that case, the
+    A DimcatResource "knows" that it is part of a package if its ``filepath`` ends on ``.zip``. In that case, the
     DimcatPackage will take care of the serialization and not store an individual resource descriptor.
     """
 
