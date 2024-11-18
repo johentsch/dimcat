@@ -640,7 +640,7 @@ class DimcatConfig(MutableMapping, DimcatObject):
         self._options[key] = value
 
     @cached_property
-    def options_class(self):
+    def options_class(self) -> Type:
         """The class of the described DimcatObject."""
         return get_class(self.options_dtype)
 
@@ -650,7 +650,7 @@ class DimcatConfig(MutableMapping, DimcatObject):
         return self._options["dtype"]
 
     @property
-    def options_schema(self):
+    def options_schema(self) -> DimcatSchema:
         """Returns the (instantiated) Dimcat singleton object for the class this Config describes."""
         return get_schema(self.options_dtype)
 
