@@ -132,12 +132,10 @@ class Pipeline(PipelineStep):
         return steps
 
     @overload
-    def info(self, return_str: Literal[False] = False) -> None:
-        ...
+    def info(self, return_str: Literal[False] = False) -> None: ...
 
     @overload
-    def info(self, return_str: Literal[True]) -> str:
-        ...
+    def info(self, return_str: Literal[True]) -> str: ...
 
     def info(self, return_str=False) -> Optional[str]:
         """Show the names of the included steps."""
@@ -195,3 +193,6 @@ class Pipeline(PipelineStep):
                 raise
             # ToDo: Check the processed resource and handle errors
         return processed_resource
+
+    def __getitem__(self, item):
+        return self._steps[item]
