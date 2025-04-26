@@ -678,6 +678,7 @@ class Facet(DimcatResource):
 
 class EventsFacet(Facet):
     """A facet that represents sounding events and/or rests. Events specify 'what' is to be performed."""
+
     pass
 
 
@@ -685,17 +686,20 @@ class ControlsFacet(Facet):
     """A facet that represents 'control events' in MEI parlance; i.e. elements that depend on events to exist,
     such as dynamics, ties, phrase marks, pedal marks, etc. Controls define 'how' something is to be performed.
     """
+
     pass
 
 
 class AnnotationsFacet(Facet):
     """A facet that represents one or several annotation layers."""
+
     pass
 
 
 class StructureFacet(Facet):
     """A facet that describes structural elements of a score, pertaining to its timeline, segmentations, or
     its repeat structure."""
+
     pass
 
 
@@ -823,20 +827,24 @@ class MuseScoreHarmonies(MuseScoreFacet, AnnotationsFacet):
                         missing_mask.shift(-1).fillna(False) & ~group_start_mask
                     )
                     harmony_fill_columns = [
-                        "pedal",
-                        "chord",
-                        "special",
-                        "numeral",
-                        "form",
-                        "figbass",
-                        "changes",
-                        "relativeroot",
-                        "chord_type",
-                        "chord_tones",
-                        "root",
-                        "bass_note",
-                        "alt_label",
-                        "pedalend",
+                        col
+                        for col in (
+                            "pedal",
+                            "chord",
+                            "special",
+                            "numeral",
+                            "form",
+                            "figbass",
+                            "changes",
+                            "relativeroot",
+                            "chord_type",
+                            "chord_tones",
+                            "root",
+                            "bass_note",
+                            "alt_label",
+                            "pedalend",
+                        )
+                        if col in feature_df.columns
                     ]
                     feature_df.loc[ffill_mask, harmony_fill_columns] = (
                         feature_df.loc[ffill_mask, harmony_fill_columns]
