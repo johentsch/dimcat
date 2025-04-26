@@ -14,10 +14,24 @@ module_logger = logging.getLogger(__name__)
 
 
 class FeatureDimensionsSlicer(Slicer):
-    """This slicer and its subclasses slice resources according to the dimensions of a particular :class:`Feature`.
-    This requires either processing a Dataset providing the relevant Feature (resulting in a call to
-    :meth:`fit_to_dataset`), or calling :meth:`process` on the relevant before any others,
+    """This slicer and its subclasses slice resources according to the dimensions of a particular
+    :class:`Feature`.
+    Its previous name, AdjacencyGroupSlicer, expresses an important characteristic, which is that
+    it computes dimensions in the sense of ranges where a given feature does not change.
+    For example, a LocalKeySlicer uses dimensions of uninterrupted segments consisting of a single
+    local key. This is different from a LocalKeyGrouper, which would group elements by local key
+    regardless of which key segment they come from.
+
+    This type of slicer needs to be set up with dimensions of the `required_feature`. It therefore
+    requires either processing a Dataset providing the relevant Feature (resulting in a call to
+    :meth:`fit_to_dataset`), or calling :meth:`process` on the relevant feature before any others,
     or setting the :attr:`slice_intervals` manually, including upon initialization.
+
+    As all slicers, FeatureDimensionSlicers append a new index level with slice intervals to the
+    processed features. Items whose timespans overlap with a slice interval are split. If several
+    items occur within a given slice interval, they will share that same interval in the new index
+    level. In most cases, you will want to group by this new level. If you need to know which
+    feature value(s) each slice interval corresponds to, you can use :attr:`FeatureDimensionSlicer.slice_metadata`
     """
 
     _adjacency_group_column_name: ClassVar[Optional[str]] = None
@@ -25,7 +39,7 @@ class FeatureDimensionsSlicer(Slicer):
     Defaults to each row, i.e., no extra grouping.
     """
     _required_feature: ClassVar[FeatureName]
-    """Required for AdjacencyGroupSlicers, the type of Feature that needs to be present in a dataset to fit this
+    """Required for FeatureDimensionsSlicers, the type of Feature that needs to be present in a dataset to fit this
     slicer. """
 
     class Schema(Slicer.Schema):
