@@ -878,9 +878,9 @@ class PhraseAnnotations(HarmonyLabels):
     def get_phrase_data(
         self,
         columns: str | List[str] = "label",
-        components: PhraseComponentName
-        | Literal["phrase"]
-        | Iterable[PhraseComponentName] = "body",
+        components: (
+            PhraseComponentName | Literal["phrase"] | Iterable[PhraseComponentName]
+        ) = "body",
         query: Optional[str] = None,
         reverse: bool = False,
         level_name: str = "i",
@@ -1256,7 +1256,7 @@ class Notes(Feature):
 # endregion Events
 # region Structure
 class Measures(Feature):
-    pass
+    _default_value_column = "timesig"
 
 
 # endregion Structure
