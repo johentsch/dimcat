@@ -1,5 +1,23 @@
 # Changelog
 
+## [3.4.0](https://github.com/DCMLab/dimcat/compare/v3.3.0...v3.4.0) (2025-04-28)
+
+
+### Features
+
+* allows for retrieving pipeline steps via subscript ([f774987](https://github.com/DCMLab/dimcat/commit/f7749874f9c1fb930d7542637c11efae05ce7056))
+
+
+### Bug Fixes
+
+* adds default value column to Measures feature ([85f12c6](https://github.com/DCMLab/dimcat/commit/85f12c67435a2d5aa8c8d28de9ec90b859dea79b))
+* avoids an error due to missing columns ([efe6947](https://github.com/DCMLab/dimcat/commit/efe6947af215dd88c7c8321ca6243452e71772ab))
+
+
+### Documentation
+
+* extends docstring for FeatureDimensionSlicer ([cb897da](https://github.com/DCMLab/dimcat/commit/cb897da170c3b6d0b29cae12e6800b674837c11a))
+
 ## [3.3.0](https://github.com/DCMLab/dimcat/compare/v3.2.0...v3.3.0) (2024-11-18)
 
 
