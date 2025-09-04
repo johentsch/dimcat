@@ -57,7 +57,11 @@ class MeasureGrouper(ColumnGrouper):
 
 
 class ModeGrouper(ColumnGrouper):
-    _allowed_features = (FeatureName.HarmonyLabels, FeatureName.KeyAnnotations)
+    _allowed_features = (
+        FeatureName.HarmonyLabels,
+        FeatureName.KeyAnnotations,
+        FeatureName.CadenceLabels,
+    )
 
     def __init__(
         self,
