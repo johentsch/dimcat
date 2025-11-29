@@ -5,7 +5,7 @@ jupytext:
     extension: .md
     format_name: myst
     format_version: 0.13
-    jupytext_version: 1.16.4
+    jupytext_version: 1.18.1
 kernelspec:
   display_name: dimcat
   language: python
@@ -135,7 +135,7 @@ For example, compare the public {meth}`.PipelineStep.process_dataset` with its p
         self.fit_to_dataset(new_dataset)
         # this is where subclasses create a new package and add it to the dataset
         return new_dataset
-    
+
     def process_dataset(self, dataset: Dataset) -> Dataset:
         """Apply this PipelineStep to a :class:`Dataset` and return a copy containing the output(s)."""
         self.check_dataset(dataset)
@@ -187,7 +187,7 @@ Any {class}`~.PipelineStep` applied on a dataset will be performed on all eligib
 
 Datasets are passive 'by nature', meaning that, in general, they are being manipulated by PipelineSteps or by the user.
 PipelineSteps process a Dataset by requesting one or several features using {meth}`.Dataset.get_feature`,
- processing each {class}`~.Feature`, and adding the processed Feature(s) to the Dataset's OutputsCatalog. 
+ processing each {class}`~.Feature`, and adding the processed Feature(s) to the Dataset's OutputsCatalog.
 However, in one case, the Dataset *does* play an active role, namely in the extraction of features from the InputsCatalog.
 When prompted with `.get_feature(F)` where `F` is some specification of a {class}`~.Feature`, the Dataset will
 
@@ -198,20 +198,19 @@ Since the actual extraction happens on the level of a single resource (a {class}
 
 * {meth}`.Dataset.extract_feature` calls
 * {meth}`.InputsCatalog.extract_feature` calls
-* {meth}`.Package.extract_feature` calls 
+* {meth}`.Package.extract_feature` calls
 * {meth}`.DimcatResource.extract_feature`.
 
 The Dataset applies all previously applied PipelineSteps to the thus extracted {class}`~.Feature`,
  adds it to its {class}`~.OutputsCatalog` and appends the {class}`~.FeatureExtractor` to its {class}`~.Pipeline`.
-
 
 +++
 
 #### DimcatCatalog
 
 As per the [Frictionless Data specifications](https://frictionlessdata.io), a catalog is a collection of packages. In ``Dimcat``, catalogs appear only in a single place: Every {class}`~.Dataset` consists of two {class}`DimcatCatalogs <.DimcatCatalog>`, namely an {class}`~.InputsCatalog` and an {class}`~.OutputsCatalog`.
-{attr}`~.inputs` includes all loaded datapackages, and {attr}`~.outputs` all (processed or unprocessed) features extracted from them, as well as all other 
-processing results. 
+{attr}`~.inputs` includes all loaded datapackages, and {attr}`~.outputs` all (processed or unprocessed) features extracted from them, as well as all other
+processing results.
 
 
 #### DimcatPackage
@@ -236,14 +235,10 @@ Although [Frictionless resources](https://framework.frictionlessdata.io/docs/fra
  In both cases, the descriptor specifies the column schema for each resource, allowing ``DiMCAT`` to "lazy-load" the data, meaning that the Dataframes are loaded into memory only the moment when they are actually needed (using {meth}`.DimcatResource.load`).
 
 A DimcatResource can be instantiated in two different ways, either from a descriptor or from a dataframe.
-At any given moment, the {attr}`~.DimcatResource.status` attribute returns an Enum value reflecting the availability and state of the/a dataframe. This is relevant for keeping datapackages stored on disk up-to-date. 
+At any given moment, the {attr}`~.DimcatResource.status` attribute returns an Enum value reflecting the availability and state of the/a dataframe. This is relevant for keeping datapackages stored on disk up-to-date.
 When a Dataset is serialized, all dataframes from the outputs catalog that haven't been stored to disk yet are written into one or several .zip files so that they can be referenced by the updated descriptor(s).
 
 If you want to create a new type of DimcatResource, please inherit from the relevant subclass and refer to the docstrings of {class}`~.DimcatResource` in the module {mod}`.dc` for understanding how to use the class variables.
-
-+++
-
-
 
 ```{code-cell}
 
