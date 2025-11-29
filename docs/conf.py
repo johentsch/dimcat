@@ -93,7 +93,7 @@ myst_heading_anchors = 3 # enables links to headings such as [text](./rel_path/t
 nb_execution_timeout = 180
 nb_execution_raise_on_error = False
 nb_execution_show_tb = True
-nb_execution_mode = "auto"
+nb_execution_mode = "cache"
 html_js_files = ["https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -147,7 +147,43 @@ exclude_patterns = [
     "Thumbs.db",
     ".DS_Store",
     ".venv",
-    "notebooks*",
+    "notebooks/accents*",
+    #"notebooks/annotations*",
+    "notebooks/bass_degrees*",
+    #"notebooks/cadences*",
+    "notebooks/chopin_profiles*",
+    "notebooks/chord_profiles*",
+    "notebooks/chord_tone_profiles*",
+    "notebooks/chord_tone_profiles_classification*",
+    "notebooks/chord_tone_profiles_inspection*",
+    "notebooks/chromatic_bass*",
+    "notebooks/cross_entropy*",
+    "notebooks/ctp_classification_baseline*",
+    "notebooks/dendrograms*",
+    "notebooks/dft*",
+    #"notebooks/DLC_overview*",
+    "notebooks/generate*",
+    "notebooks/harmonies*",
+    "notebooks/information_gain*",
+    "notebooks/ismir*",
+    #"notebooks/keys*",
+    "notebooks/line_of_fifths*",
+    "notebooks/modulations*",
+    #"notebooks/notes_stats*",
+    "notebooks/overview*",
+    "notebooks/phrase_alignment*",
+    "notebooks/phrase_diatonics*",
+    "notebooks/phrase_excerpts*",
+    "notebooks/phrase_grams*",
+    "notebooks/phrase_profiles*",
+    #"notebooks/phrases*",
+    "notebooks/phrase_sankey_draft*",
+    "notebooks/phrase_stages*",
+    "notebooks/phrase_unalignment*",
+    "notebooks/salzburg_stages*",
+    "notebooks/scale_degrees*",
+    "notebooks/specific*",
+    "notebooks/utils*",
     "tutorial*",
     "mwe*",
 ]

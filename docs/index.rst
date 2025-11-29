@@ -9,6 +9,7 @@ Table of Contents
 
    manual/index
    Module Reference <api/modules>
+   notebooks
    contributing
    imprint
 
