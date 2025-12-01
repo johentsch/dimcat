@@ -29,6 +29,7 @@ from .data import catalogs, datasets, packages, resources
 from .data.datasets.base import Dataset
 from .data.resources import PieceIndex
 from .steps import analyzers, extractors, filters, groupers, loaders, pipelines, slicers
+from .steps.loaders.base import get_dataset
 from .steps.pipelines.base import Pipeline
 
 module_logger = logging.getLogger(__name__)
